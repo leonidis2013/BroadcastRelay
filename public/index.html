@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>BroadcastRelay</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script>
+(function () {
+  var p = 'auto';
+  try { p = localStorage.getItem('br-theme') || 'auto'; } catch (e) {}
+  var light = p === 'light' || (p === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
+  document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+})();
+</script>
+<style>
+  /* Same palette, controls and settings layout as LiveMic and the LivePi web page */
+  :root { --bg:#0d1015; --card:#151a21; --card2:#1b2129; --line:#252c36; --fg:#d8dee6; --dim:#7c8794; --faint:#4c5561; --acc:#4c8dff; --teal:#2ec4b6; --bad:#ef4c4c; --ok:#3ecf6e; --warn:#f2c94c; --inset:#0b0e12; --knob:#d8dee6; --onacc:#0d1015; --shadow:#0008; --r:10px; color-scheme:dark; }
+  :root[data-theme=light] { --bg:#e9edf2; --card:#fbfcfd; --card2:#f0f3f6; --line:#d3dae3; --fg:#18202b; --dim:#586474; --faint:#97a1ae; --acc:#2563d6; --teal:#0f9488; --bad:#d63232; --ok:#23a056; --warn:#cf9a10; --inset:#e3e8ee; --knob:#ffffff; --onacc:#ffffff; --shadow:#0003; color-scheme:light; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { min-height:100vh; }
+  .hide { display:none !important; }
+  #app { padding:0 14px calc(20px + env(safe-area-inset-bottom)); }
+
+  header { display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:10px 14px; padding-top:calc(10px + env(safe-area-inset-top)); margin-bottom:14px;
+           background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
+  h1 { font-size:15px; margin:0; letter-spacing:.12em; text-transform:uppercase; font-weight:800; }
+  h1 .ver { font-size:10px; font-weight:600; letter-spacing:.02em; text-transform:none; color:var(--dim); vertical-align:1px; margin-left:2px; }
+  h1 small { display:block; font-size:10px; letter-spacing:.04em; color:var(--dim); font-weight:400; text-transform:none; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); margin:0 0 10px; font-weight:700; }
+  h2::before { content:""; display:inline-block; width:3px; height:11px; background:var(--acc); border-radius:2px; margin-right:7px; vertical-align:-1px; }
+
+  #status { flex:1; min-width:0; display:flex; gap:6px; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  #status::-webkit-scrollbar { display:none; }
+  .st { flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; background:var(--card2); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--dim); white-space:nowrap; }
+  .st.bad { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
+  .st.warn { background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); }
+  .st.ok { background:color-mix(in srgb, var(--ok) 16%, transparent); color:var(--ok); }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--faint); flex:none; }
+  .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); } .dot.bad { background:var(--bad); } .dot.acc { background:var(--acc); }
+
+  select, input, button, textarea { background:var(--card2); color:var(--fg); border:1px solid transparent; border-radius:8px; padding:7px 11px; font:inherit; }
+  input:focus, select:focus, textarea:focus { outline:2px solid color-mix(in srgb, var(--acc) 55%, transparent); outline-offset:0; }
+  button { cursor:pointer; font-weight:600; touch-action:manipulation; }
+  button:hover { background:color-mix(in srgb, var(--card2) 80%, var(--fg) 8%); }
+  button:disabled, input:disabled { opacity:.35; cursor:not-allowed; }
+  button.on { background:var(--acc); color:var(--onacc); }
+  button.on:hover { background:color-mix(in srgb, var(--acc) 88%, var(--fg) 12%); }
+  button.danger { color:var(--bad); }
+  .seg { display:inline-flex; background:var(--card2); border-radius:9px; padding:3px; gap:2px; }
+  .seg button { border-radius:7px; background:transparent; padding:6px 12px; }
+  .seg button.on { background:var(--acc); color:var(--onacc); }
+  .note { color:var(--dim); font-size:12px; }
+  a { color:var(--acc); text-decoration:none; } a:hover { text-decoration:underline; }
+
+  /* header buttons: settings turns into Done */
+  .gear { display:flex; align-items:center; justify-content:center; gap:6px; width:32px; height:32px; padding:0; border-radius:8px; background:transparent; color:var(--dim); }
+  .gear:hover { color:var(--fg); background:var(--card2); }
+  .gear svg { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .gear span { display:none; font-size:13px; }
+  .gear.on { width:auto; padding:0 12px; background:var(--acc); color:var(--onacc); }
+  .gear.on svg { display:none; } .gear.on span { display:inline; }
+  .gear.spin svg { animation:spin 1s linear infinite; }
+  #updAll { padding:6px 14px; }
+
+  /* ===== devices ===== */
+  #alerts { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  #alerts:empty { display:none; }
+  .devs { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; align-items:start; }
+  .dev { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--ok); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:9px; min-width:0; }
+  .dev.upd { border-left-color:var(--warn); }
+  .dev.off { border-left-color:var(--bad); }
+  .dev.busy { border-left-color:var(--acc); }
+  .dev.none { border-left-color:var(--faint); }
+  .dh { display:flex; align-items:center; gap:8px; min-width:0; }
+  .dn { flex:1; min-width:0; font-weight:700; font-size:13px; letter-spacing:.08em; text-transform:uppercase; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dsub { font-size:12px; color:var(--dim); margin-top:-6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip { font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:2px 8px; border-radius:999px; background:var(--card2); color:var(--dim); }
+  .chip.t { background:color-mix(in srgb, var(--teal) 16%, transparent); color:var(--teal); }
+  .rows { display:flex; flex-direction:column; border-top:1px solid var(--line); }
+  .row { display:grid; grid-template-columns:76px 1fr auto; gap:8px; align-items:center; min-height:38px; padding:5px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .rl { font-size:10.5px; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; }
+  .rv { min-width:0; font-size:13px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+  .rv small { display:block; font-size:11.5px; color:var(--dim); }
+  .rv .up { color:var(--warn); font-weight:700; } .rv .good { color:var(--ok); } .rv .bad { color:var(--bad); } .rv .arrow { color:var(--faint); padding:0 3px; }
+  .row button { padding:5px 12px; font-size:12.5px; }
+  .tag { font-size:11px; color:var(--dim); white-space:nowrap; }
+  .df { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .df .when { flex:1; min-width:90px; font-size:11.5px; color:var(--dim); }
+  .df button { padding:5px 11px; font-size:12.5px; }
+  .jres { position:relative; padding-right:34px; } .jres .x { position:absolute; top:6px; right:6px; background:none; border:0; color:var(--dim); font-size:18px; line-height:1; padding:4px 8px; cursor:pointer; border-radius:6px; } .jres .x:hover { color:var(--fg); background:rgba(127,127,127,.15); }
+  .errbox { border:1px solid color-mix(in srgb, var(--bad) 55%, transparent); background:color-mix(in srgb, var(--bad) 10%, transparent); border-radius:8px; padding:7px 10px; font-size:12.5px; }
+  .errbox button { margin-top:6px; padding:4px 10px; font-size:12.5px; }
+  .okbox { border:1px solid color-mix(in srgb, var(--ok) 50%, transparent); background:color-mix(in srgb, var(--ok) 10%, transparent); border-radius:8px; padding:7px 10px; font-size:12.5px; }
+  .jobbox { border:1px solid color-mix(in srgb, var(--acc) 45%, transparent); background:color-mix(in srgb, var(--acc) 8%, transparent); border-radius:8px; padding:8px 10px; font-size:12.5px; display:flex; flex-direction:column; gap:5px; }
+  .jstep { display:flex; align-items:center; gap:7px; }
+  .jstep .ic { width:14px; text-align:center; flex:none; font-weight:800; }
+  .jstep.ok .ic { color:var(--ok); } .jstep.failed .ic { color:var(--bad); } .jstep.skipped { color:var(--faint); } .jstep.pending { color:var(--dim); }
+  .jstep.running .ic::before { content:""; display:inline-block; width:10px; height:10px; border:2px solid var(--acc); border-top-color:transparent; border-radius:50%; animation:spin .9s linear infinite; vertical-align:-1px; }
+  pre.tail { margin:2px 0 0; font:11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; max-height:66px; overflow:hidden; }
+  .link { background:none; border:0; padding:0; color:var(--acc); font-weight:600; font-size:12px; }
+  .link:hover { background:none; text-decoration:underline; }
+  .empty { color:var(--dim); text-align:center; padding:60px 10px; }
+
+  /* ===== settings (same layout as LiveMic and LivePi's Setup) ===== */
+  .setup { display:flex; gap:14px; align-items:flex-start; }
+  .side { display:flex; flex-direction:column; gap:4px; width:168px; flex:0 0 168px; position:sticky; top:64px; }
+  .side button { display:flex; align-items:center; gap:9px; text-align:left; background:transparent; color:var(--dim); font-weight:600; border-color:transparent; }
+  .side button svg { width:16px; height:16px; flex:0 0 16px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .side button:hover { color:var(--fg); }
+  .side button.on { background:var(--card); border-color:var(--line); color:var(--acc); box-shadow:inset 3px 0 0 var(--acc); }
+  .pane { flex:1; min-width:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px; margin-bottom:14px; max-width:820px; }
+  .set { display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--line); }
+  .card > h2 + .set, .set.first { border-top:0; }
+  .sl { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .sl b { font-weight:600; font-size:14px; }
+  .sl span { font-size:12px; color:var(--dim); line-height:1.35; }
+  .sl span:empty { display:none; }
+  .sc { flex:0 1 auto; display:flex; gap:6px; align-items:center; justify-content:flex-end; flex-wrap:wrap; min-width:0; }
+  .sc input.txt { width:120px; max-width:100%; }
+  .sc input.num { width:72px; text-align:center; }
+  .sc input.wide { width:190px; max-width:100%; }
+  .sc select { max-width:170px; }
+  .sc .to { font-size:12px; color:var(--dim); }
+  .sc .val { font-size:13px; color:var(--dim); font-variant-numeric:tabular-nums; text-align:right; }
+  .sc .val.ok { color:var(--ok); } .sc .val.warn { color:var(--warn); } .sc .val.bad { color:var(--bad); }
+  .pnote { max-width:820px; margin:0 0 12px; }
+  details > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; min-height:28px; }
+  details > summary::-webkit-details-marker { display:none; }
+  details > summary::after { content:"›"; margin-left:auto; color:var(--dim); font-size:20px; line-height:1; transition:transform .15s; }
+  details[open] > summary::after { transform:rotate(90deg); }
+  details > summary b { font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:13px; }
+  details > summary .note { margin-left:2px; }
+  details.fold > summary b, details.dcard > summary b { flex:0 1 auto; }
+  details.dcard[open] > summary, details.fold[open] > summary { margin-bottom:8px; }
+  details.sub { border-top:1px solid var(--line); margin-top:6px; padding-top:10px; }
+  details.sub > summary { color:var(--dim); font-size:13px; font-weight:600; }
+  details.fold > .card { border:0; padding:0; margin:0 0 6px; max-width:none; background:transparent; }
+  .locknote { border:1px solid var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent); border-radius:6px; padding:8px 10px; margin-bottom:12px; font-size:13px; max-width:820px; }
+  .formerr { color:var(--bad); font-size:12.5px; padding:4px 0 2px; }
+  .keybox { width:100%; font:11.5px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize:none; height:64px; }
+  .found { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line); }
+  .found .fi { flex:1; min-width:0; } .found .fi b { display:block; font-weight:600; } .found .fi span { font-size:12px; color:var(--dim); }
+  .dcard h3 { margin:0 0 4px; font-size:14px; }
+  .act { display:flex; gap:12px; align-items:center; padding:9px 0; border-top:1px solid var(--line); cursor:pointer; }
+  .act:first-child { border-top:0; }
+  .act:hover { background:color-mix(in srgb, var(--card2) 60%, transparent); }
+  .act .ai { flex:1; min-width:0; } .act .ai b { display:block; font-weight:600; } .act .ai span { font-size:12px; color:var(--dim); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bk { display:flex; gap:10px; align-items:center; padding:7px 0; border-top:1px solid var(--line); font-size:13px; }
+  .bk span { flex:1; min-width:0; overflow-wrap:anywhere; } .bk small { color:var(--dim); }
+
+  /* confirm and log windows */
+  .scrim { position:fixed; inset:0; background:#0009; z-index:40; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .modal { background:var(--card); border:1px solid var(--line); border-radius:12px; width:min(560px, 100%); max-height:calc(100vh - 32px); display:flex; flex-direction:column; box-shadow:0 12px 40px var(--shadow); }
+  .modal.big { width:min(860px, 100%); }
+  .mh { padding:14px 16px 4px; font-weight:700; font-size:15px; }
+  .mb { padding:6px 16px 12px; overflow:auto; font-size:13.5px; }
+  .mf { padding:10px 16px 14px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  .mf .sp { flex:1; }
+  .pstep { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-top:1px solid var(--line); }
+  .pstep:first-child { border-top:0; }
+  .pstep input { margin-top:3px; padding:0; width:16px; height:16px; accent-color:var(--acc); }
+  .pstep b { display:block; font-weight:600; } .pstep span { font-size:12.5px; color:var(--dim); }
+  .pdev { font-weight:700; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); padding:12px 0 2px; }
+  pre.log { margin:0; font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--inset); border-radius:8px; padding:10px; max-height:60vh; overflow:auto; }
+
+  .toast { position:fixed; left:50%; bottom:calc(14px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:var(--card); color:var(--fg); border:1px solid var(--bad);
+           padding:8px 14px; border-radius:999px; font-size:14px; display:none; z-index:80; max-width:90vw; box-shadow:0 6px 24px var(--shadow); }
+  .toast.show { display:block; } .toast.good { border-color:var(--ok); }
+
+  .offbar { display:none; position:fixed; left:50%; top:calc(12px + env(safe-area-inset-top)); transform:translateX(-50%); z-index:60; background:var(--bad); color:#fff;
+            padding:10px 16px; border-radius:999px; font-weight:600; font-size:14px; box-shadow:0 6px 24px var(--shadow); align-items:center; gap:10px; white-space:nowrap; }
+  body.offline .offbar { display:flex; }
+  body.offline #tab-main, body.offline #tab-setup, body.offline #tab-claude { filter:grayscale(1); opacity:.4; pointer-events:none; user-select:none; }
+  .spin { width:14px; height:14px; border:2px solid #fff6; border-top-color:#fff; border-radius:50%; animation:spin .9s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  @media (max-width:720px) {
+    header { row-gap:6px; padding:8px 12px; padding-top:calc(8px + env(safe-area-inset-top)); gap:8px; }
+    header h1 { font-size:14px; } header h1 small { display:none; }
+    #status { order:3; flex:1 0 100%; }
+    .gear { order:2; } .hsec { order:2; padding:0 9px; } .hsec .lbl { display:none; } #fsBtn { margin-left:auto; order:1; } #chkAll { order:1; } #updAll { order:1; }
+    h1 { order:0; }
+    #app { padding-left:10px; padding-right:10px; }
+    .devs { grid-template-columns:1fr; }
+    .setup { flex-direction:column; align-items:stretch; gap:10px; }
+    .side { flex-direction:row; width:100%; flex:none; overflow-x:auto; position:static; scrollbar-width:none; gap:6px; }
+    .side::-webkit-scrollbar { display:none; }
+    .side button { flex:0 0 auto; min-height:38px; padding:6px 14px; border-radius:999px; background:var(--card2); font-size:14px; border:0; box-shadow:none; }
+    .side button.on { background:var(--acc); color:var(--onacc); box-shadow:none; }
+    .card { padding:12px; }
+    .set { padding:10px 0; gap:10px; flex-wrap:wrap; }
+    .sl { flex:1 1 100%; }
+    .sc { flex:1 1 100%; justify-content:flex-start; }
+    .sc input.txt { width:110px; font-size:16px; } .sc input.num { font-size:16px; } .sc input.wide { width:100%; font-size:16px; }
+    .sc button { min-height:38px; padding:6px 12px; font-size:15px; }
+    .sc .seg button { min-height:34px; padding:4px 10px; font-size:14px; }
+    .row button, .df button { min-height:34px; }
+    .set.feat { flex-wrap:nowrap; } .set.feat .sl { flex:1 1 0; } .set.feat .sc { flex:0 0 auto; }
+    body.in-setup #status { display:none; }
+  }
+
+  /* ===== BroadcastRelay ===== */
+  :root { --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --live:#ef4c4c; }
+  #goLive { padding:6px 14px; background:var(--ok); color:var(--onacc); }
+  #goLive:hover { background:color-mix(in srgb, var(--ok) 85%, var(--fg) 15%); }
+  #endAll { padding:6px 14px; color:var(--bad); }
+  .st.live { background:var(--live); color:#fff; font-weight:700; }
+  .st.live .dot { background:#fff; animation:blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity:.3; } }
+  .dev.wide { grid-column:1/-1; }
+  .dev.live { border-left-color:var(--live); }
+  .dev.idle { border-left-color:var(--faint); }
+  .dev.warn { border-left-color:var(--warn); }
+  .chip.l { background:var(--live); color:#fff; }
+  .chip.w { background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); }
+  .chip.b { background:color-mix(in srgb, var(--bad) 16%, transparent); color:var(--bad); }
+  .chip.o { background:color-mix(in srgb, var(--ok) 16%, transparent); color:var(--ok); }
+  .chip.a { background:color-mix(in srgb, var(--acc) 16%, transparent); color:var(--acc); }
+
+  /* input: preview + meters */
+  .inrow { display:grid; grid-template-columns:minmax(0, 520px) minmax(0, 1fr) 230px; gap:14px; align-items:start; }
+  .inr { border-top:0; } .inr .row:first-child { padding-top:0; }
+  @media (max-width:1100px) { .inrow { grid-template-columns:minmax(0, 1fr) 230px; } .inr { grid-column:1/-1; order:3; border-top:1px solid var(--line); } }
+  .pv { position:relative; aspect-ratio:16/9; background:#000; border-radius:8px; overflow:hidden; }
+  .pv video { width:100%; height:100%; object-fit:contain; display:block; }
+  .pv .ov { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:#9aa5b1; font-size:13px; text-align:center; padding:10px; }
+  .pv .ov b { color:#d8dee6; font-size:15px; letter-spacing:.08em; text-transform:uppercase; }
+  .pv .pvb { position:absolute; right:8px; top:8px; padding:3px 9px; font-size:11.5px; background:#000a; color:#d8dee6; border-radius:6px; }
+  .pv .tag2 { position:absolute; left:8px; top:8px; font-size:10.5px; font-weight:800; letter-spacing:.1em; background:var(--live); color:#fff; padding:2px 7px; border-radius:4px; }
+  .meters { display:flex; flex-direction:column; gap:10px; min-width:0; }
+  .mbox { background:var(--inset); border-radius:8px; padding:8px; display:flex; gap:10px; }
+  .mbox canvas { width:62px; height:200px; flex:none; }
+  .lufs { flex:1; display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .lu { display:flex; flex-direction:column; }
+  .lu span { font-size:10px; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; }
+  .lu b { font:700 20px/1.1 var(--mono); font-variant-numeric:tabular-nums; }
+  .lu b small { font-size:10px; color:var(--dim); font-weight:400; margin-left:2px; }
+  .lu.hot b { color:var(--warn); } .lu.over b { color:var(--bad); }
+  .tgt { font-size:11px; color:var(--dim); }
+
+  /* destination editor, misc */
+  .add { border:1px dashed var(--line); border-left:1px dashed var(--line); background:transparent; align-items:center; justify-content:center; min-height:120px; color:var(--dim); cursor:pointer; }
+  .add:hover { color:var(--fg); border-color:var(--faint); }
+  .add b { font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
+  .rv.mono, .mono { font-family:var(--mono); font-size:12px; }
+  .stats { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .stats span { color:var(--dim); } .stats b { font-weight:600; color:var(--fg); }
+  .cmd { display:block; width:100%; margin:0; font:12px/1.45 var(--mono); background:var(--inset); color:var(--fg); border-radius:8px; padding:9px 10px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:all; }
+  .copyrow { display:flex; gap:8px; align-items:flex-start; margin-top:6px; }
+  .copyrow .cmd { flex:1; min-width:0; }
+  .code { font:700 30px/1 var(--mono); letter-spacing:.14em; background:var(--card2); border:1px solid var(--line); border-radius:9px; padding:12px 16px; display:inline-block; margin:6px 0; }
+  .fgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px; }
+  .fld { display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .fld > span { font-size:11px; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; }
+  .fld input, .fld select, .fld textarea { width:100%; }
+  .fld.wide { grid-column:1/-1; }
+  .msec { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin:14px 0 8px; }
+  .msec:first-child { margin-top:2px; }
+  .reclist { display:flex; flex-direction:column; border-top:1px solid var(--line); max-height:220px; overflow:auto; }
+  .rec { display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .rec .ri { flex:1; min-width:0; } .rec .ri small { display:block; color:var(--dim); font-size:11.5px; }
+  .rec button { padding:4px 9px; font-size:12px; }
+  .bar2 { height:6px; background:var(--card2); border-radius:3px; overflow:hidden; }
+  .bar2 i { display:block; height:100%; background:var(--acc); }
+  .bar2.warn i { background:var(--warn); } .bar2.bad i { background:var(--bad); }
+  .login { max-width:360px; margin:12vh auto 0; }
+  .login input { width:100%; margin:6px 0; font-size:16px; }
+  .login button { width:100%; margin-top:6px; padding:10px; }
+  .hint { font-size:12px; color:var(--dim); margin-top:6px; }
+  .tailbox { margin:0; font:11px/1.35 var(--mono); color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; max-height:90px; overflow:auto; background:var(--inset); border-radius:6px; padding:6px 8px; }
+  table.kv { border-collapse:collapse; width:100%; font-size:13px; }
+  table.kv td { padding:6px 4px; border-top:1px solid var(--line); vertical-align:top; }
+  table.kv td:first-child { color:var(--dim); width:38%; }
+  .ndis { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+  .ndis button { text-align:left; display:flex; gap:8px; align-items:center; background:var(--card2); }
+  .ndis button.on { background:var(--acc); color:var(--onacc); }
+  .ndis small { opacity:.7; font-weight:400; margin-left:auto; font-family:var(--mono); font-size:11px; }
+  @media (max-width:720px) {
+    .inrow { grid-template-columns:1fr; } .inr { order:2; }
+    header h1 { flex:1 1 auto; }
+    .mbox canvas { height:120px; }
+    #goLive, #endAll { order:1; }
+    .fgrid { grid-template-columns:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BroadcastRelay <span class="ver" id="hVer"></span><small>Stream relay</small></h1>
+  <div id="status"></div>
+  <button id="goLive" class="hide" title="Start every destination marked for Go live">Go live</button>
+  <button id="endAll" class="hide" title="Stop every destination">End</button>
+  <button id="gear" class="gear" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Done</span></button>
+</header>
+<div class="offbar"><span class="spin"></span>Lost connection to BroadcastRelay. Retrying…</div>
+
+<div id="app">
+<section id="tab-login" class="hide">
+  <div class="card login">
+    <h2 id="lgTitle">Sign in</h2>
+    <div class="note" id="lgNote"></div>
+    <input type="password" id="lgPw" placeholder="Password" autocomplete="current-password">
+    <input type="password" id="lgPw2" class="hide" placeholder="Same password again" autocomplete="new-password">
+    <div class="formerr hide" id="lgErr"></div>
+    <button class="on" id="lgBtn">Sign in</button>
+  </div>
+</section>
+
+<section id="tab-main" class="hide">
+  <div id="alerts"></div>
+  <div class="devs" id="grid">
+    <article class="dev wide idle" id="inCard">
+      <div class="dh"><span class="dot" id="inDot"></span><div class="dn">Input</div><div class="chips" id="inChips"></div></div>
+      <div class="inrow">
+        <div class="pv"><video id="pvVid" muted playsinline autoplay></video><div class="ov" id="pvOv"><b>No input</b><span id="pvOvTxt"></span></div><span class="tag2 hide" id="pvLive">LIVE</span><button class="pvb" id="pvBtn">Preview off</button></div>
+        <div class="rows inr" id="inRows"></div>
+        <div class="meters">
+          <div class="mbox"><canvas id="mCan" width="124" height="400"></canvas>
+            <div class="lufs">
+              <div class="lu" id="luM"><span>Momentary</span><b>–</b></div>
+              <div class="lu" id="luS"><span>Short-term</span><b>–</b></div>
+              <div class="lu" id="luI"><span>Integrated</span><b>–</b></div>
+              <div class="lu" id="luR"><span>Range</span><b>–</b></div>
+              <div class="lu" id="luT"><span>True peak</span><b>–</b></div>
+            </div>
+          </div>
+          <div class="tgt">Streaming target: about −16 to −14 LUFS short-term, true peak below −1 dBTP. YouTube and Facebook turn down anything louder.</div>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="tab-setup" class="hide">
+ <div class="setup">
+  <div class="side" id="side">
+    <button data-pane="input" class="on"><svg viewBox="0 0 24 24"><path d="M4 12h12M12 6l6 6-6 6M20 4v16"/></svg><span>Input</span></button>
+    <button data-pane="dests"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><path d="M7 12h4M11 12l8-6M11 12l8 6M11 12h8"/></svg><span>Destinations</span></button>
+    <button data-pane="web"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 9l4 2-4 2z M8 21h8"/></svg><span>Web player</span></button>
+    <button data-pane="ndi"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v7"/></svg><span>NDI</span></button>
+    <button data-pane="rec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span>Recording</span></button>
+    <button data-pane="youtube"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z"/></svg><span>YouTube</span></button>
+    <button data-pane="facebook"><svg viewBox="0 0 24 24"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/></svg><span>Facebook</span></button>
+    <button data-pane="companion"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Companion</span></button>
+    <button data-pane="network"><svg viewBox="0 0 24 24"><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 17.5h.01M10 17.5h.01M12 14V8M8 4h8v4H8z"/></svg><span>Ports</span></button>
+    <button data-pane="system"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>System</span></button>
+  </div>
+  <div class="pane" id="pane"></div>
+ </div>
+</section>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modal"></div>
+
+<script src="whep.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var S = null, ST = null, LV = null, tab = 'main', pane = 'input', es = null, themePref = 'auto';
+  try { themePref = localStorage.getItem('br-theme') || 'auto'; } catch (e) {}
+
+  // ---------- formatting ----------
+  function dur(ms) {
+    if (ms == null || ms < 0) return '';
+    var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+    return h ? h + 'h ' + (m < 10 ? '0' : '') + m + 'm' : m ? m + 'm ' + (s % 60 < 10 ? '0' : '') + (s % 60) + 's' : (s % 60) + 's';
+  }
+  function bytes(n) { if (n == null) return ''; var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0; while (n >= 1000 && i < 4) { n /= 1000; i++; } return (n >= 100 || i === 0 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i]; }
+  function rate(k) { if (k == null) return '–'; return k >= 1000 ? (k / 1000).toFixed(1) + ' Mb/s' : Math.round(k) + ' kb/s'; }
+  function fps(f) { return f ? (Math.round(f * 100) / 100) + '' : ''; }
+  function resLabel(v) { if (!v || !v.height) return ''; return v.width + '×' + v.height + (v.fps ? ' ' + fps(v.fps) + 'fps' : ''); }
+  function when(t) { var d = new Date(t); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+  var STATE_TXT = { off: 'Off', starting: 'Starting', live: 'Live', retrying: 'Reconnecting', error: 'Stopped', waiting: 'Waiting for input', creating: 'Creating broadcast', ending: 'Ending broadcast' };
+  function stCls(st) { return st === 'live' ? 'live' : st === 'error' ? 'off' : st === 'retrying' ? 'warn' : st === 'off' ? 'idle' : 'busy'; }
+  function chipFor(st) { var c = st === 'live' ? 'l' : st === 'error' ? 'b' : st === 'retrying' ? 'w' : st === 'off' ? '' : 'a'; return '<span class="chip ' + c + '">' + esc(STATE_TXT[st] || st) + '</span>'; }
+
+  function toast(msg, good) {
+    var t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (good ? ' good' : '');
+    clearTimeout(toast.t); toast.t = setTimeout(function () { t.className = 'toast'; }, good ? 2200 : 5000);
+  }
+
+  // ---------- server ----------
+  function call(method, path, body) {
+    return fetch(path, { method: method, credentials: 'same-origin', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (r.status === 401 && j.login) { showLogin(j.setup); return { ok: false, error: 'Sign in first' }; }
+          if (j.ok === undefined) j.ok = r.ok;
+          return j;
+        });
+      })
+      .catch(function () { return { ok: false, error: 'Could not reach BroadcastRelay' }; });
+  }
+  function act(path, okMsg) {
+    return call('POST', path).then(function (r) { if (!r.ok) toast(r.error || 'That did not work'); else if (okMsg) toast(okMsg, true); return r; });
+  }
+  function saveSection(section, values, msg) {
+    return call('POST', 'api/settings', { section: section, values: values }).then(function (r) {
+      if (!r.ok) toast(r.error || 'Not saved'); else toast(msg || 'Saved', true);
+      return r;
+    });
+  }
+
+  function start() {
+    call('GET', 'api/state').then(function (j) {
+      if (!j || !j.version) return;
+      S = j; ST = j.status;
+      show(tab === 'login' ? 'main' : tab);
+      openEvents();
+    });
+  }
+  function openEvents() {
+    if (es) es.close();
+    es = new EventSource('api/events');
+    es.addEventListener('state', function (e) { S = JSON.parse(e.data); ST = S.status; document.body.classList.remove('offline'); renderAll(true); });
+    es.addEventListener('status', function (e) { ST = JSON.parse(e.data); if (S) S.status = ST; document.body.classList.remove('offline'); renderAll(false); });
+    es.addEventListener('levels', function (e) { LV = JSON.parse(e.data); LV && (LV.at = Date.now()); });
+    es.onerror = function () {
+      document.body.classList.add('offline');
+      // a 401 looks like an error to EventSource: check whether we are signed out
+      setTimeout(function () { call('GET', 'api/state').then(function (j) { if (j && j.version && es.readyState === 2) openEvents(); }); }, 3000);
+    };
+  }
+
+  // ---------- login ----------
+  function showLogin(setup) {
+    if (es) { es.close(); es = null; }
+    tab = 'login';
+    ['main', 'setup'].forEach(function (t) { $('#tab-' + t).classList.add('hide'); });
+    $('#tab-login').classList.remove('hide');
+    $('#goLive').classList.add('hide'); $('#endAll').classList.add('hide'); $('#gear').classList.add('hide');
+    $('#lgTitle').textContent = setup ? 'Set a password' : 'Sign in';
+    $('#lgNote').textContent = setup ? 'Choose the password for this control page (at least 8 characters). The web player stays open to everyone.' : '';
+    $('#lgPw2').classList.toggle('hide', !setup);
+    $('#lgPw').setAttribute('autocomplete', setup ? 'new-password' : 'current-password');
+    $('#lgBtn').textContent = setup ? 'Save and sign in' : 'Sign in';
+    $('#lgBtn').dataset.setup = setup ? '1' : '';
+    $('#lgPw').focus();
+  }
+  function doLogin() {
+    var pw = $('#lgPw').value, setup = $('#lgBtn').dataset.setup === '1';
+    if (setup && pw !== $('#lgPw2').value) { $('#lgErr').textContent = 'The two passwords are different.'; $('#lgErr').classList.remove('hide'); return; }
+    call('POST', 'api/login', { password: pw }).then(function (r) {
+      if (!r.ok) { $('#lgErr').textContent = r.error || 'Could not sign in'; $('#lgErr').classList.remove('hide'); return; }
+      $('#lgErr').classList.add('hide'); $('#lgPw').value = ''; $('#lgPw2').value = '';
+      $('#gear').classList.remove('hide');
+      tab = 'main'; start();
+    });
+  }
+  $('#lgBtn').onclick = doLogin;
+  $('#lgPw').onkeydown = $('#lgPw2').onkeydown = function (e) { if (e.key === 'Enter') doLogin(); };
+
+  // ---------- tabs ----------
+  function show(t) {
+    tab = t;
+    ['login', 'main', 'setup'].forEach(function (x) { $('#tab-' + x).classList.toggle('hide', x !== t); });
+    $('#gear').classList.toggle('on', t === 'setup');
+    $('#gear').classList.remove('hide');
+    document.body.classList.toggle('in-setup', t === 'setup');
+    if (t === 'setup') renderPane(true);
+    renderAll(true);
+  }
+  $('#gear').onclick = function () { show(tab === 'setup' ? 'main' : 'setup'); };
+  $$('#side button').forEach(function (b) { b.onclick = function () { pane = b.dataset.pane; $$('#side button').forEach(function (x) { x.classList.toggle('on', x === b); }); renderPane(true); window.scrollTo(0, 0); }; });
+
+  function renderAll(full) {
+    if (!S || !ST) return;
+    $('#hVer').textContent = 'v' + S.version + (S.demo ? ' demo' : '');
+    renderHeader();
+    if (tab === 'main') renderMain();
+    if (tab === 'setup') { if (full) renderPane(false); else livePane(); }
+  }
+
+  // ---------- header ----------
+  function renderHeader() {
+    var i = ST.input, pills = [];
+    if (ST.mediamtx.state !== 'live') pills.push('<span class="st bad"><span class="dot bad"></span>Relay ' + esc(STATE_TXT[ST.mediamtx.state] || ST.mediamtx.state) + '</span>');
+    if (i.ready) pills.push('<span class="st ok"><span class="dot ok"></span>' + esc(i.protocol || 'Input') + ' ' + esc(i.video && i.video.height ? i.video.height + 'p' + (i.video.fps ? Math.round(i.video.fps) : '') : '') + ' · ' + rate(i.kbps) + '</span>');
+    else pills.push('<span class="st"><span class="dot"></span>No input</span>');
+    var live = ST.destinations.filter(function (d) { return d.state === 'live'; }).length;
+    if (live) pills.push('<span class="st live"><span class="dot"></span>Live · ' + live + '</span>');
+    var bad = ST.destinations.filter(function (d) { return d.state === 'retrying' || d.state === 'error'; }).length;
+    if (bad) pills.push('<span class="st warn"><span class="dot warn"></span>' + bad + ' need attention</span>');
+    if (ST.recording.active) pills.push('<span class="st bad"><span class="dot bad"></span>REC</span>');
+    if (ST.web.enabled && ST.web.state === 'live') pills.push('<span class="st"><span class="dot acc"></span>Web · ' + ST.web.viewers.total + ' watching</span>');
+    if (ST.ndiOut.enabled) pills.push('<span class="st' + (ST.ndiOut.state === 'live' ? ' ok' : '') + '"><span class="dot' + (ST.ndiOut.state === 'live' ? ' ok' : '') + '"></span>NDI out' + (ST.ndiOut.connections ? ' · ' + ST.ndiOut.connections : '') + '</span>');
+    if (ST.cpu.total != null) pills.push('<span class="st' + (ST.cpu.total > 90 ? ' bad' : ST.cpu.total > 75 ? ' warn' : '') + '">CPU ' + Math.round(ST.cpu.total) + '%</span>');
+    $('#status').innerHTML = pills.join('');
+    var anyOn = ST.destinations.some(function (d) { return d.state !== 'off' && d.state !== 'error'; });
+    $('#goLive').classList.toggle('hide', tab !== 'main' || !S.settings.destinations.length);
+    $('#endAll').classList.toggle('hide', tab !== 'main' || !anyOn);
+  }
+  $('#goLive').onclick = function () {
+    var armed = S.settings.destinations.filter(function (d) { return d.armed; });
+    if (!armed.length) return toast('No destination is marked "Include in Go live". Edit a destination to include it.');
+    confirmBox('Go live?', 'Starts ' + armed.map(function (d) { return '<b>' + esc(d.name) + '</b>'; }).join(', ') + ' and the web player.', 'Go live', function () { act('api/v1/golive', 'Going live'); });
+  };
+  $('#endAll').onclick = function () { confirmBox('End the stream?', 'Stops every destination and ends the broadcasts on YouTube and Facebook. The web player and recording keep running while the input is connected.', 'End', function () { act('api/v1/end', 'Ended'); }, true); };
+
+  // ---------- modal ----------
+  function modal(html, big) {
+    $('#modal').innerHTML = '<div class="scrim"><div class="modal' + (big ? ' big' : '') + '">' + html + '</div></div>';
+    $('.scrim').addEventListener('mousedown', function (e) { if (e.target.classList.contains('scrim')) closeModal(); });
+    document.addEventListener('keydown', escKey);
+  }
+  function closeModal() { $('#modal').innerHTML = ''; document.removeEventListener('keydown', escKey); }
+  function escKey(e) { if (e.key === 'Escape') closeModal(); }
+  function confirmBox(title, body, okLabel, fn, danger) {
+    modal('<div class="mh">' + esc(title) + '</div><div class="mb">' + body + '</div><div class="mf"><button id="mNo">Cancel</button><button id="mYes" class="' + (danger ? 'danger' : 'on') + '">' + esc(okLabel) + '</button></div>');
+    $('#mNo').onclick = closeModal; $('#mYes').onclick = function () { closeModal(); fn(); };
+  }
+
+  // ---------- main ----------
+  var cardsKey = '';
+  function renderMain() {
+    renderInput();
+    var g = $('#grid');
+    var key = S.settings.destinations.map(function (d) { return d.id; }).join(',');
+    if (key !== cardsKey) {
+      $$('.dyn', g).forEach(function (x) { x.remove(); });
+      S.settings.destinations.forEach(function (d) { g.insertAdjacentHTML('beforeend', '<article class="dev dyn" data-dest="' + d.id + '"></article>'); });
+      g.insertAdjacentHTML('beforeend', '<article class="dev dyn add" id="addDest"><b>+ Add destination</b><span class="note">YouTube, Facebook, RTMP or SRT</span></article>');
+      g.insertAdjacentHTML('beforeend', '<article class="dev dyn" id="webCard"></article><article class="dev dyn" id="ndiCard"></article><article class="dev dyn" id="recCard"></article>');
+      cardsKey = key;
+    }
+    S.settings.destinations.forEach(function (d, i) { renderDest($('[data-dest="' + d.id + '"]'), d, ST.destinations[i] || { state: 'off' }); });
+    renderWeb(); renderNdiOut(); renderRec();
+    renderAlerts();
+  }
+
+  function renderAlerts() {
+    var a = [];
+    if (ST.mediamtx.state === 'error' || ST.mediamtx.state === 'retrying') a.push('<div class="errbox">The relay server (MediaMTX) is not running: ' + esc(ST.mediamtx.error || '') + '. Another app may be using one of its ports; check Settings › Ports.</div>');
+    if (!ST.recording.writable && ST.recording.enabled) a.push('<div class="errbox">Recordings cannot be saved to <b>' + esc(ST.recording.dir) + '</b>. Give the container\'s user (uid 1000) write access to that dataset.</div>');
+    var y = ST.platforms.youtube, f = ST.platforms.facebook;
+    if (y.needsReconnect) a.push('<div class="errbox">YouTube needs to be connected again (Settings › YouTube).</div>');
+    if (f.needsReconnect) a.push('<div class="errbox">Facebook needs to be connected again (Settings › Facebook).</div>');
+    var html = a.join('');
+    if ($('#alerts').innerHTML !== html) $('#alerts').innerHTML = html;
+  }
+
+  // input card
+  var pvOn = true, pvPlayer = null, pvSource = null;
+  try { pvOn = localStorage.getItem('br-preview') !== 'off'; } catch (e) {}
+  function renderInput() {
+    var i = ST.input, card = $('#inCard');
+    card.className = 'dev wide ' + (i.ready ? 'live' : i.source === 'ndi' && i.ndi && i.ndi.state !== 'off' ? 'busy' : 'idle');
+    $('#inDot').className = 'dot' + (i.ready ? ' ok' : '');
+    var chips = [];
+    chips.push('<span class="chip ' + (i.ready ? 'o' : '') + '">' + (i.ready ? 'Connected' : 'Waiting') + '</span>');
+    if (i.source === 'ndi') chips.push('<span class="chip t">NDI</span>');
+    if (ST.recording.active) chips.push('<span class="chip b">● REC</span>');
+    $('#inChips').innerHTML = chips.join('');
+    var rows = [];
+    function row(l, v, sub) { rows.push('<div class="row"><div class="rl">' + l + '</div><div class="rv">' + v + (sub ? '<small>' + sub + '</small>' : '') + '</div><div></div></div>'); }
+    if (i.source === 'ndi') {
+      var n = i.ndi || {};
+      row('Source', 'NDI: ' + esc(n.source || S.settings.input.ndiSource || 'none chosen'),
+        n.state === 'live' ? (n.connected === 0 ? '<span class="bad">Source not connected, holding the last frame</span>' : 'Encoding to H.264 at ' + rate(S.settings.input.ndiBitrate) + (n.cpu ? ' · CPU ' + Math.round(n.cpu) + '%' : '')) : esc(STATE_TXT[n.state] || n.state || '') + (n.error ? ': ' + esc(n.error) : ''));
+    } else {
+      row('Source', i.ready ? esc(i.protocol || '?') + (i.remote ? ' from ' + esc(String(i.remote).replace(/:\d+$/, '')) : '') : 'Waiting for OBS', i.ready ? '' : 'Settings › Input has the addresses to put in OBS');
+    }
+    if (i.ready) {
+      row('Video', esc((i.video && i.video.codec) || '?') + (i.video && i.video.profile ? ' ' + esc(i.video.profile) : '') + ' · ' + esc(resLabel(i.video) || (i.probing ? 'checking…' : '')));
+      row('Audio', i.audio ? esc(i.audio.codec) + (i.audio.rate ? ' · ' + (i.audio.rate / 1000) + ' kHz' : '') + (i.audio.channels ? ' · ' + (i.audio.channels === 2 ? 'stereo' : i.audio.channels === 1 ? 'mono' : i.audio.channels + ' ch') : '') + (i.audio.kbps ? ' · ' + i.audio.kbps + ' kb/s' : '') : '<span class="bad">No audio</span>');
+      var link = [];
+      if (i.rtt != null) link.push('RTT ' + i.rtt + ' ms');
+      if (i.lossPct != null) link.push('loss ' + i.lossPct + '%');
+      row('Bitrate', rate(i.kbps), link.join(' · '));
+      row('Connected', dur(Date.now() - i.since));
+    }
+    $('#inRows').innerHTML = rows.join('');
+    // preview
+    $('#pvBtn').textContent = pvOn ? 'Preview off' : 'Preview on';
+    var wantPv = pvOn && i.ready && !S.demo && tab === 'main';
+    if (wantPv && (!pvPlayer || pvSource !== i.since)) {
+      if (pvPlayer) pvPlayer.stop();
+      pvSource = i.since;
+      pvPlayer = whepPlay($('#pvVid'), 'api/preview/whep', function (st) { if (st === 'failed' || st === 'closed') { pvPlayer = null; } });
+    } else if (!wantPv && pvPlayer) { pvPlayer.stop(); pvPlayer = null; }
+    var ov = !i.ready || !pvOn || S.demo;
+    $('#pvOv').classList.toggle('hide', !ov);
+    $('#pvLive').classList.toggle('hide', !(i.ready && ST.destinations.some(function (d) { return d.state === 'live'; })));
+    $('#pvOv').querySelector('b').textContent = !i.ready ? 'No input' : S.demo ? 'Demo' : 'Preview off';
+    $('#pvOvTxt').textContent = !i.ready ? (i.source === 'ndi' ? 'Waiting for the NDI source' : 'Waiting for OBS to connect') : S.demo ? 'No video in demo mode' : '';
+  }
+  $('#pvBtn').onclick = function () { pvOn = !pvOn; try { localStorage.setItem('br-preview', pvOn ? 'on' : 'off'); } catch (e) {} renderInput(); };
+
+  // meters (drawn every frame from the latest levels)
+  var hold = [-120, -120], holdAt = [0, 0], shown = [-120, -120];
+  function drawMeters() {
+    requestAnimationFrame(drawMeters);
+    if (tab !== 'main') return;
+    var c = $('#mCan'), g = c.getContext('2d'), W = c.width, H = c.height;
+    var cs = getComputedStyle(document.documentElement);
+    var col = function (v) { return cs.getPropertyValue(v).trim(); };
+    var lv = LV && Date.now() - LV.at < 1500 ? LV : null;
+    g.clearRect(0, 0, W, H);
+    var top = 8, bot = H - 22, mn = -60;
+    var y = function (db) { return top + (bot - top) * (1 - (Math.max(mn, Math.min(0, db)) - mn) / -mn); };
+    g.font = '18px system-ui'; g.fillStyle = col('--dim'); g.textAlign = 'right';
+    [0, -6, -12, -18, -24, -36, -48, -60].forEach(function (d) { g.fillText(String(d), 26, y(d) + 6); g.fillStyle = col('--line'); g.fillRect(30, y(d), W - 30, 1); g.fillStyle = col('--dim'); });
+    var bw = (W - 38) / 2 - 3;
+    for (var ch = 0; ch < 2; ch++) {
+      var x = 34 + ch * (bw + 6);
+      var v = lv && lv.peak && lv.peak.length ? (lv.peak[ch] != null ? lv.peak[ch] : lv.peak[0]) : -120;
+      shown[ch] = v > shown[ch] ? v : Math.max(v, shown[ch] - 1.2);
+      if (shown[ch] > hold[ch] || Date.now() - holdAt[ch] > 1500) { hold[ch] = shown[ch]; holdAt[ch] = Date.now(); }
+      g.fillStyle = col('--card2'); g.fillRect(x, top, bw, bot - top);
+      var grad = g.createLinearGradient(0, bot, 0, top);
+      grad.addColorStop(0, col('--ok')); grad.addColorStop(0.7, col('--ok')); grad.addColorStop(0.8, col('--warn')); grad.addColorStop(0.97, col('--bad'));
+      g.fillStyle = grad; g.fillRect(x, y(shown[ch]), bw, bot - y(shown[ch]));
+      if (hold[ch] > mn) { g.fillStyle = hold[ch] > -1 ? col('--bad') : col('--fg'); g.fillRect(x, y(hold[ch]) - 1, bw, 3); }
+      g.fillStyle = col('--dim'); g.textAlign = 'center'; g.fillText(ch ? 'R' : 'L', x + bw / 2, H - 2);
+    }
+    function lu(id, val, unit, hot, over) {
+      var b = $('#' + id + ' b'), el = $('#' + id);
+      b.innerHTML = val == null || val <= -70 ? '–' : val.toFixed(1) + '<small>' + unit + '</small>';
+      el.className = 'lu' + (val != null && over != null && val > over ? ' over' : val != null && hot != null && val > hot ? ' hot' : '');
+    }
+    lu('luM', lv && lv.m, 'LUFS', -12, -9); lu('luS', lv && lv.s, 'LUFS', -13, -10); lu('luI', lv && lv.i, 'LUFS', -13, -10);
+    $('#luR b').innerHTML = lv ? lv.lra.toFixed(1) + '<small>LU</small>' : '–';
+    var tp = lv && lv.tpk && lv.tpk.length ? Math.max.apply(null, lv.tpk) : null;
+    lu('luT', tp, 'dBTP', -2, -1);
+  }
+  requestAnimationFrame(drawMeters);
+
+  // destination card
+  var TYPE_NAME = { youtube: 'YouTube', facebook: 'Facebook', rtmp: 'RTMP', srt: 'SRT' };
+  function renderDest(el, d, st) {
+    var on = st.state !== 'off' && st.state !== 'error';
+    el.className = 'dev dyn ' + stCls(st.state);
+    var chips = '<span class="chip t">' + TYPE_NAME[d.type] + (d.type === 'youtube' || d.type === 'facebook' ? (d.connect === 'api' ? ' · API' : ' · key') : '') + '</span>' + chipFor(st.state) + (d.armed ? '' : '<span class="chip" title="Not started by Go live">Manual</span>');
+    var stats = '';
+    if (st.state === 'live' && st.stats) {
+      var s = st.stats;
+      stats = '<div class="stats"><span>Rate <b>' + rate(s.kbps) + '</b></span><span>FPS <b>' + (s.fps != null ? s.fps : '–') + '</b></span><span>Speed <b>' + (s.speed != null ? s.speed + '×' : '–') + '</b></span>' +
+        (s.drop ? '<span>Dropped <b class="bad">' + s.drop + '</b></span>' : '') + (st.cpu != null ? '<span>CPU <b>' + Math.round(st.cpu) + '%</b></span>' : '') + '<span>Up <b>' + dur(Date.now() - st.since) + '</b></span></div>';
+    }
+    var err = '';
+    if (st.error && (st.state === 'error' || st.state === 'retrying' || st.state === 'off')) err = '<div class="errbox">' + esc(st.error) + (st.state === 'retrying' && st.retryIn != null ? '<br><span class="note">Trying again in ' + st.retryIn + ' s</span>' : '') + '</div>';
+    var reasons = st.reasons && st.reasons.length ? '<div class="note">' + esc(st.reasons.join('; ')) + '</div>' : '';
+    var html = '<div class="dh"><span class="dot' + (st.state === 'live' ? ' bad' : st.state === 'retrying' ? ' warn' : on ? ' acc' : '') + '"></span><div class="dn">' + esc(d.name) + '</div></div>' +
+      '<div class="chips">' + chips + '</div>' +
+      '<div class="dsub" style="margin-top:0">' + esc(st.desc || '') + '</div>' + reasons + stats + err +
+      '<div class="df"><span class="when">' + (st.watchUrl ? '<a href="' + esc(st.watchUrl) + '" target="_blank" rel="noopener">Watch on ' + TYPE_NAME[d.type] + '</a>' : '') + '</span>' +
+      '<button data-edit="' + d.id + '">Edit</button>' +
+      (on ? '<button class="danger" data-stop="' + d.id + '">Stop</button>' : '<button class="on" data-start="' + d.id + '">Start</button>') + '</div>';
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+  $('#grid').addEventListener('click', function (e) {
+    var b = e.target.closest('button, #addDest');
+    if (!b) return;
+    if (b.id === 'addDest') return editDest(null);
+    if (b.dataset.edit) return editDest(b.dataset.edit);
+    if (b.dataset.start) { b.disabled = true; return act('api/v1/destinations/' + b.dataset.start + '/start'); }
+    if (b.dataset.stop) {
+      var d = S.settings.destinations.find(function (x) { return x.id === b.dataset.stop; });
+      return confirmBox('Stop ' + d.name + '?', d.connect === 'api' ? 'This also ends the broadcast on ' + TYPE_NAME[d.type] + '.' : 'The stream to ' + esc(d.name) + ' stops.', 'Stop', function () { act('api/v1/destinations/' + d.id + '/stop'); }, true);
+    }
+    if (b.dataset.web) return act('api/v1/web/' + b.dataset.web);
+    if (b.dataset.ndiout) return act('api/v1/ndi-out/' + b.dataset.ndiout);
+    if (b.dataset.rec) return act('api/v1/recording/' + b.dataset.rec);
+    if (b.dataset.copy) return copy(b.dataset.copy);
+    if (b.dataset.recs) return showRecordings();
+  });
+
+  function webUrl() {
+    var pub = S.settings.network.publicUrl;
+    return pub || (location.protocol + '//' + location.hostname + ':' + S.ports.public + '/');
+  }
+  function renderWeb() {
+    var w = ST.web, el = $('#webCard');
+    el.className = 'dev dyn ' + (w.enabled ? stCls(w.state) : 'idle');
+    var html = '<div class="dh"><span class="dot' + (w.state === 'live' ? ' ok' : '') + '"></span><div class="dn">Web player</div></div>' +
+      '<div class="chips"><span class="chip t">WebRTC + HLS</span>' + chipFor(w.enabled ? w.state : 'off') + '</div>' +
+      '<div class="dsub" style="margin-top:0">' + esc(w.desc || (S.settings.web.mode === 'original' ? 'Original video' : (S.settings.web.height || 'Same') + 'p')) + '</div>' +
+      (w.state === 'live' ? '<div class="stats"><span>Watching <b>' + w.viewers.total + '</b></span><span>WebRTC <b>' + w.viewers.webrtc + '</b></span><span>HLS <b>' + w.viewers.hls + '</b></span>' + (w.cpu != null ? '<span>CPU <b>' + Math.round(w.cpu) + '%</b></span>' : '') + '</div>' : '') +
+      (w.error && w.state !== 'live' && w.enabled ? '<div class="errbox">' + esc(w.error) + '</div>' : '') +
+      '<div class="df"><span class="when"><a href="' + esc(webUrl()) + '" target="_blank" rel="noopener">Open the player</a></span><button data-copy="' + esc(webUrl()) + '">Copy link</button>' +
+      (w.enabled ? '<button class="danger" data-web="stop">Stop</button>' : '<button class="on" data-web="start">Start</button>') + '</div>';
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+  function renderNdiOut() {
+    var n = ST.ndiOut, el = $('#ndiCard');
+    el.classList.toggle('hide', !S.ndi.available && !n.enabled);
+    el.className = 'dev dyn ' + (n.enabled ? stCls(n.state) : 'idle') + (!S.ndi.available && !n.enabled ? ' hide' : '');
+    var html = '<div class="dh"><span class="dot' + (n.state === 'live' ? ' ok' : '') + '"></span><div class="dn">NDI output</div></div>' +
+      '<div class="chips"><span class="chip t">NDI</span>' + chipFor(n.enabled ? n.state : 'off') + '</div>' +
+      '<div class="dsub" style="margin-top:0">' + esc(S.hostname.toUpperCase() + ' (' + S.settings.ndiOut.name + ')') + (n.plan ? ' · ' + n.plan.width + '×' + n.plan.height + ' ' + fps(n.plan.fps) + 'fps' : '') + '</div>' +
+      (n.state === 'live' ? '<div class="stats"><span>Receivers <b>' + (n.connections || 0) + '</b></span>' + (n.cpu ? '<span>CPU <b>' + Math.round(n.cpu) + '%</b></span>' : '') + '</div>' : '') +
+      (n.error && n.enabled && n.state !== 'live' ? '<div class="errbox">' + esc(n.error) + '</div>' : '') +
+      '<div class="df"><span class="when"></span>' + (n.enabled ? '<button class="danger" data-ndiout="stop">Stop</button>' : '<button class="on" data-ndiout="start">Start</button>') + '</div>';
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+  function renderRec() {
+    var r = ST.recording, el = $('#recCard');
+    el.className = 'dev dyn ' + (r.active ? 'off' : 'idle');
+    var disk = r.disk, pct = disk && disk.total ? Math.round(100 * (1 - disk.free / disk.total)) : null;
+    var html = '<div class="dh"><span class="dot' + (r.active ? ' bad' : '') + '"></span><div class="dn">Recording</div></div>' +
+      '<div class="chips">' + (r.active ? '<span class="chip l">● Recording</span>' : r.enabled ? '<span class="chip">Records when the input connects</span>' : '<span class="chip">Off</span>') + '</div>' +
+      '<div class="dsub" style="margin-top:0">Raw input, kept ' + (S.settings.recording.keepDays ? S.settings.recording.keepDays + ' days' : 'until deleted') + ' · ' + r.count + ' files, ' + bytes(r.used) + '</div>' +
+      (pct != null ? '<div class="bar2' + (pct > 95 ? ' bad' : pct > 85 ? ' warn' : '') + '" title="Disk ' + pct + '% full"><i style="width:' + pct + '%"></i></div><div class="note">' + bytes(disk.free) + ' free</div>' : '') +
+      '<div class="df"><span class="when"></span><button data-recs="1">Files</button>' + (r.enabled ? '<button class="danger" data-rec="off">Turn off</button>' : '<button class="on" data-rec="on">Turn on</button>') + '</div>';
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+  function copy(text) {
+    var done = function () { toast('Copied', true); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, function () { fallback(); });
+    else fallback();
+    function fallback() { var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed'); } t.remove(); }
+  }
+  function showRecordings() {
+    call('GET', 'api/recordings').then(function (r) {
+      var list = r.recordings || [];
+      modal('<div class="mh">Recordings</div><div class="mb"><div class="note" style="margin-bottom:8px">Saved in ' + esc(r.dir) + ' on the server. Each file is one segment of the raw input (MP4).</div>' +
+        (list.length ? '<div class="reclist">' + list.map(function (x) {
+          return '<div class="rec"><div class="ri">' + esc(when(x.start)) + (x.active ? ' <span class="chip l">recording</span>' : '') + '<small>' + esc(x.id) + ' · ' + bytes(x.size) + ' · ' + dur(x.end - x.start) + '</small></div>' +
+            '<a href="api/recordings/file?id=' + encodeURIComponent(x.id) + '" download><button>Download</button></a>' + (x.active ? '' : '<button class="danger" data-del="' + esc(x.id) + '">Delete</button>') + '</div>';
+        }).join('') + '</div>' : '<div class="empty" style="padding:30px">No recordings yet</div>') +
+        '</div><div class="mf"><button id="mNo">Close</button></div>', true);
+      $('#mNo').onclick = closeModal;
+      $$('[data-del]').forEach(function (b) { b.onclick = function () { call('DELETE', 'api/recordings?id=' + encodeURIComponent(b.dataset.del)).then(function (x) { if (x.ok) b.closest('.rec').remove(); else toast('Could not delete'); }); }; });
+    });
+  }
+
+  // ---------- destination editor ----------
+  var HEIGHTS = [[0, 'Same as input'], [2160, '2160p (4K)'], [1440, '1440p'], [1080, '1080p'], [900, '900p'], [720, '720p'], [540, '540p'], [480, '480p'], [360, '360p']];
+  var FPSES = [[0, 'Same as input'], [60, '60'], [50, '50'], [30, '30'], [25, '25'], [24, '24']];
+  var PRESETS = [['ultrafast', 'Ultrafast (least CPU)'], ['superfast', 'Superfast'], ['veryfast', 'Very fast (recommended)'], ['faster', 'Faster'], ['fast', 'Fast'], ['medium', 'Medium (most CPU)']];
+  function opts(list, cur) { return list.map(function (o) { return '<option value="' + o[0] + '"' + (String(o[0]) === String(cur) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join(''); }
+  function segH(name, list, cur) { return '<div class="seg" data-seg="' + name + '">' + list.map(function (o) { return '<button type="button" data-v="' + o[0] + '"' + (String(o[0]) === String(cur) ? ' class="on"' : '') + '>' + esc(o[1]) + '</button>'; }).join('') + '</div>'; }
+  function segVal(root, name) { var b = $('[data-seg="' + name + '"] button.on', root); return b ? b.dataset.v : null; }
+  function wireSegs(root, onChange) {
+    $$('.seg[data-seg] button', root).forEach(function (b) { b.onclick = function () { $$('button', b.parentNode).forEach(function (x) { x.classList.toggle('on', x === b); }); if (onChange) onChange(b.parentNode.dataset.seg, b.dataset.v); }; });
+  }
+
+  function editDest(id) {
+    var d = id ? S.settings.destinations.find(function (x) { return x.id === id; }) : null;
+    var st = id ? ST.destinations[S.settings.destinations.indexOf(d)] : null;
+    var running = st && st.state !== 'off' && st.state !== 'error';
+    d = d || { type: 'youtube', name: '', connect: ST.platforms.youtube.connected ? 'api' : 'key', armed: true, url: '', title: '{weekday} Service - {date}', description: '', privacy: 'public', video: { mode: 'encode', height: 1080, fps: 0, bitrate: 0, preset: 'veryfast' }, audio: { mode: 'copy', bitrate: 256 } };
+    var html = '<div class="mh">' + (id ? 'Edit ' + esc(d.name) : 'Add destination') + '</div><div class="mb" id="dEd">' +
+      '<div class="msec">Where</div>' +
+      '<div class="fgrid"><label class="fld wide"><span>Type</span>' + segH('type', [['youtube', 'YouTube'], ['facebook', 'Facebook'], ['rtmp', 'RTMP'], ['srt', 'SRT']], d.type) + '</label>' +
+      '<label class="fld"><span>Name</span><input data-f="name" value="' + esc(d.name) + '" placeholder="' + TYPE_NAME[d.type] + '"></label>' +
+      '<label class="fld" id="fConn"><span>Connect with</span>' + segH('connect', [['api', 'Account'], ['key', 'Stream key']], d.connect) + '</label>' +
+      '<label class="fld wide" id="fUrl"><span id="fUrlL">Server</span><input data-f="url" value="' + esc(d.url) + '" spellcheck="false" autocomplete="off"></label>' +
+      '<label class="fld wide" id="fKey"><span>Stream key</span><input data-f="key" type="password" autocomplete="new-password" spellcheck="false" placeholder="' + (d.hasKey ? 'Saved. Type to replace it' : 'Paste the stream key') + '"></label>' +
+      '<div class="fld wide note" id="fApiNote"></div>' +
+      '<label class="fld wide" id="fTitle"><span>Title</span><input data-f="title" value="' + esc(d.title) + '" maxlength="100"></label>' +
+      '<label class="fld wide" id="fDesc"><span>Description</span><textarea data-f="description" rows="2">' + esc(d.description) + '</textarea></label>' +
+      '<label class="fld" id="fPriv"><span>Privacy</span><select data-f="privacy">' + opts([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], d.privacy) + '</select></label>' +
+      '</div>' +
+      '<div class="msec">Video</div>' +
+      '<div class="fgrid"><label class="fld wide"><span>Encoding</span>' + segH('vmode', [['encode', 'Encode for this destination'], ['original', 'Send the original (no CPU)']], d.video.mode) + '</label>' +
+      '<label class="fld enc"><span>Resolution</span><select data-f="height">' + opts(HEIGHTS, d.video.height) + '</select></label>' +
+      '<label class="fld enc"><span>Frame rate</span><select data-f="fps">' + opts(FPSES, d.video.fps) + '</select></label>' +
+      '<label class="fld enc"><span>Bitrate (kb/s, 0 = auto)</span><input data-f="bitrate" type="number" min="0" max="60000" step="250" value="' + (d.video.bitrate || 0) + '"></label>' +
+      '<label class="fld enc"><span>Quality / CPU</span><select data-f="preset">' + opts(PRESETS, d.video.preset) + '</select></label></div>' +
+      '<div class="msec">Audio</div>' +
+      '<div class="fgrid"><label class="fld wide"><span>Audio</span>' + segH('amode', [['copy', 'Original when it is AAC (best)'], ['aac', 'Always re-encode AAC']], d.audio.mode) + '</label>' +
+      '<label class="fld"><span>AAC bitrate when encoding</span><select data-f="abitrate">' + opts([[128, '128 kb/s'], [160, '160 kb/s'], [192, '192 kb/s'], [256, '256 kb/s'], [320, '320 kb/s']], d.audio.bitrate) + '</select></label>' +
+      '<div class="fld wide note" id="fANote"></div></div>' +
+      '<div class="msec">Go live</div>' +
+      '<div class="fgrid"><label class="fld wide"><span>Start with the Go live button</span>' + segH('armed', [['1', 'Yes'], ['0', 'No, only by hand']], d.armed ? '1' : '0') + '</label></div>' +
+      '<div class="formerr hide" id="dErr"></div>' +
+      (running ? '<div class="note" style="margin-top:8px">This destination is running. Saving video or audio changes restarts its stream for a few seconds.</div>' : '') +
+      '</div><div class="mf">' + (id ? '<button class="danger" id="dDel">Delete</button>' : '') + '<span class="sp"></span><button id="mNo">Cancel</button><button class="on" id="dSave">Save</button></div>';
+    modal(html, true);
+    var root = $('#dEd');
+    function refresh() {
+      var type = segVal(root, 'type'), conn = segVal(root, 'connect'), plat = type === 'youtube' || type === 'facebook';
+      if (!plat) conn = 'key';
+      $('#fConn').classList.toggle('hide', !plat);
+      var api = plat && conn === 'api';
+      $('#fUrl').classList.toggle('hide', api);
+      $('#fKey').classList.toggle('hide', api || type === 'srt');
+      ['#fTitle', '#fDesc'].forEach(function (s) { $(s).classList.toggle('hide', !api); });
+      $('#fPriv').classList.toggle('hide', !(api && type === 'youtube'));
+      $('#fUrlL').textContent = type === 'srt' ? 'SRT address (srt://host:port?streamid=…)' : plat ? 'Server (leave empty for ' + TYPE_NAME[type] + '\'s RTMPS server)' : 'Server (rtmp:// or rtmps://)';
+      $('[data-f=url]', root).placeholder = type === 'srt' ? 'srt://example.com:9000?streamid=…' : plat ? (type === 'youtube' ? 'rtmps://a.rtmps.youtube.com/live2' : 'rtmps://live-api-s.facebook.com:443/rtmp') : 'rtmp://server/app';
+      var pc = plat ? ST.platforms[type] : null;
+      $('#fApiNote').classList.toggle('hide', !api);
+      $('#fApiNote').innerHTML = api ? (pc.connected ? 'Go live creates a new ' + TYPE_NAME[type] + ' broadcast on <b>' + esc(type === 'youtube' ? pc.channelTitle : pc.pageName) + '</b> with this title. Stop ends it. Title can use {date}, {weekday} and {time}.' : '<span class="bad">' + TYPE_NAME[type] + ' is not connected yet.</span> Connect it in Settings › ' + TYPE_NAME[type] + ', or use a stream key.') : '';
+      var orig = segVal(root, 'vmode') === 'original';
+      $$('.enc', root).forEach(function (x) { x.classList.toggle('hide', orig); });
+      $('#fANote').innerHTML = type === 'facebook' ? 'Facebook recommends 128 kb/s AAC and may reject more than 256 kb/s.' : type === 'youtube' ? 'YouTube re-encodes audio to AAC 128 kb/s or Opus for viewers; a higher upload bitrate still gives it a cleaner source.' : '';
+    }
+    wireSegs(root, function (name, v) {
+      if (name === 'type') { var nm = $('[data-f=name]', root); nm.placeholder = TYPE_NAME[v]; if (v === 'youtube' || v === 'facebook') { var cn = ST.platforms[v].connected ? 'api' : 'key'; $$('[data-seg=connect] button', root).forEach(function (b) { b.classList.toggle('on', b.dataset.v === cn); }); } }
+      refresh();
+    });
+    refresh();
+    $('#mNo').onclick = closeModal;
+    if (id) $('#dDel').onclick = function () { confirmBox('Delete ' + d.name + '?', 'The destination and its saved stream key are removed.' + (running ? ' Its stream stops now.' : ''), 'Delete', function () { call('DELETE', 'api/destinations/' + id).then(function (r) { if (!r.ok) toast(r.error); }); }, true); };
+    $('#dSave').onclick = function () {
+      var f = function (k) { return $('[data-f=' + k + ']', root).value; };
+      var type = segVal(root, 'type');
+      var body = {
+        id: id || undefined, type: type, name: f('name'), connect: segVal(root, 'connect'), url: f('url'), title: f('title'), description: f('description'), privacy: f('privacy'),
+        armed: segVal(root, 'armed') === '1',
+        video: { mode: segVal(root, 'vmode'), height: Number(f('height')), fps: Number(f('fps')), bitrate: Number(f('bitrate')) || 0, preset: f('preset') },
+        audio: { mode: segVal(root, 'amode'), bitrate: Number(f('abitrate')) }
+      };
+      if (f('key')) body.key = f('key');
+      call('POST', 'api/destinations', body).then(function (r) {
+        if (!r.ok) { $('#dErr').textContent = r.error || 'Not saved'; $('#dErr').classList.remove('hide'); return; }
+        closeModal(); toast('Saved', true);
+      });
+    };
+  }
+
+  // ---------- settings panes ----------
+  function set(label, sub, ctl, cls) { return '<div class="set' + (cls ? ' ' + cls : '') + '"><div class="sl"><b>' + label + '</b><span>' + (sub || '') + '</span></div><div class="sc">' + ctl + '</div></div>'; }
+  function inp(f, val, cls, attrs) { return '<input data-f="' + f + '" class="' + (cls || 'txt') + '" value="' + esc(val == null ? '' : val) + '" ' + (attrs || '') + ' spellcheck="false" autocomplete="off">'; }
+  function card(title, body, section, saveLabel) {
+    return '<div class="card"' + (section ? ' data-section="' + section + '"' : '') + '><h2>' + title + '</h2>' + body + (section ? '<div class="set"><div class="sl"><span class="formerr hide" data-err></span></div><div class="sc"><button class="on" data-save="' + section + '">' + (saveLabel || 'Save') + '</button></div></div>' : '') + '</div>';
+  }
+  function collect(root) {
+    var v = {};
+    $$('[data-f]', root).forEach(function (el) { if (el.closest('.hide') && el.closest('.hide') !== root) return; v[el.dataset.f] = el.type === 'number' ? Number(el.value) : el.value; });
+    $$('.seg[data-seg]', root).forEach(function (s) { var b = $('button.on', s); if (b) v[s.dataset.seg] = b.dataset.v === 'true' ? true : b.dataset.v === 'false' ? false : b.dataset.v; });
+    return v;
+  }
+  var paneDirty = false;
+  function renderPane(force) {
+    if (!S) return;
+    var p = $('#pane');
+    if (!force && (paneDirty || p.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) { livePane(); return; }
+    paneDirty = false;
+    p.innerHTML = (PANES[pane] || PANES.input)();
+    wireSegs(p, function () { paneDirty = true; if (PANES[pane].change) PANES[pane].change(p); });
+    $$('input, textarea, select', p).forEach(function (el) { el.addEventListener('input', function () { paneDirty = true; }); });
+    $$('[data-save]', p).forEach(function (b) {
+      b.onclick = function () {
+        var c = b.closest('[data-section]'), vals = collect(c);
+        if (PANES[pane].prep) vals = PANES[pane].prep(b.dataset.save, vals, c);
+        saveSection(b.dataset.save, vals).then(function (r) {
+          var e = $('[data-err]', c);
+          if (!r.ok) { e.textContent = r.error; e.classList.remove('hide'); } else { e.classList.add('hide'); paneDirty = false; renderPane(true); }
+        });
+      };
+    });
+    $$('[data-copy]', p).forEach(function (b) { b.onclick = function () { copy(b.dataset.copy); }; });
+    if (PANES[pane].wire) PANES[pane].wire(p);
+    livePane();
+  }
+  function livePane() { if (PANES[pane] && PANES[pane].live) PANES[pane].live($('#pane')); }
+
+  function hostFor() {
+    return (S.lan && S.lan[0]) || location.hostname;
+  }
+  var ndiList = null;
+  var PANES = {
+    input: function () {
+      var i = S.settings.input, p = S.settings.ports, h = hostFor(), h2 = S.lan.length > 1 ? ' (or ' + S.lan.slice(1).map(esc).join(', ') + ')' : '';
+      return '<div class="note pnote">Choose where the program feed comes from: <b>OBS</b> streaming to BroadcastRelay, or an <b>NDI</b> source on the network.</div>' +
+        card('Source', set('Input', 'OBS sends with SRT, RTMP or WHIP. NDI is received and encoded here (uses CPU).', segH('source', [['stream', 'OBS stream'], ['ndi', 'NDI']], i.source)) +
+          '<div id="ndiBox" class="' + (i.source === 'ndi' ? '' : 'hide') + '">' +
+          set('NDI source', esc(i.ndiSource || 'None chosen'), '<button id="ndiFind">Find sources</button>') +
+          '<div class="ndis" id="ndiList"></div><input type="hidden" data-f="ndiSource" value="' + esc(i.ndiSource) + '">' +
+          set('Encode bitrate', 'H.264 from the NDI source into the relay. Higher keeps more quality for each destination to work from.', inp('ndiBitrate', i.ndiBitrate, 'num', 'type="number" min="2000" max="60000" step="1000"') + '<span class="to">kb/s</span>') +
+          set('Encoder speed', 'Faster uses less CPU', '<select data-f="ndiPreset">' + opts(PRESETS, i.ndiPreset) + '</select>') +
+          (S.ndi.available ? '' : '<div class="errbox">NDI is not available: ' + esc(S.ndi.why) + '</div>') +
+          '</div>', 'input') +
+        '<div class="card ' + (i.source === 'ndi' ? 'hide' : '') + '" id="obsCard"><h2>OBS settings</h2>' +
+          '<div class="note">In OBS: <b>Settings › Stream</b>, Service <b>Custom…</b> (or WHIP). Use one of these. This server is ' + esc(h) + h2 + '.</div>' +
+          '<div class="sub2" style="font-weight:700;margin-top:12px">SRT (recommended)</div><div class="note">Server — Stream key empty</div>' +
+          '<div class="copyrow"><pre class="cmd">srt://' + esc(h) + ':' + p.srt + '?streamid=publish:live&amp;latency=200000</pre><button data-copy="srt://' + esc(h) + ':' + p.srt + '?streamid=publish:live&latency=200000">Copy</button></div>' +
+          '<div class="sub2" style="font-weight:700;margin-top:12px">RTMP</div><div class="note">Server, then Stream key <code>live</code></div>' +
+          '<div class="copyrow"><pre class="cmd">rtmp://' + esc(h) + ':' + p.rtmp + '/</pre><button data-copy="rtmp://' + esc(h) + ':' + p.rtmp + '/">Copy</button></div>' +
+          '<div class="sub2" style="font-weight:700;margin-top:12px">WHIP</div><div class="note">Service WHIP, Server — Bearer token empty. Sends Opus audio, which is re-encoded to AAC for each destination.</div>' +
+          '<div class="copyrow"><pre class="cmd">http://' + esc(h) + ':' + p.webrtc + '/live/whip</pre><button data-copy="http://' + esc(h) + ':' + p.webrtc + '/live/whip">Copy</button></div>' +
+          '<div class="note" style="margin-top:12px"><b>For the best result</b> send what your best destination needs, at a high bitrate: 1080p30, x264 or hardware H.264, CBR 8000–12000 kb/s, keyframe interval 2 s, AAC 320 kb/s 48 kHz. BroadcastRelay makes the smaller versions.</div></div>' +
+        card('Who may send', set('Allowed encoder addresses', 'Only these addresses or ranges may publish the feed. One per line or comma separated.', '<textarea data-f="allowFrom" rows="3" class="keybox" style="width:240px">' + esc((i.allowFrom || []).join('\n')) + '</textarea>'), 'input');
+    }
+  };
+  PANES.input.change = function (p) {
+    var src = segVal(p, 'source');
+    $('#ndiBox').classList.toggle('hide', src !== 'ndi');
+    $('#obsCard').classList.toggle('hide', src === 'ndi');
+  };
+  PANES.input.prep = function (section, v, c) {
+    var out = {};
+    if ($('[data-f=allowFrom]', c)) out.allowFrom = v.allowFrom.split(/[\s,]+/).filter(Boolean);
+    else { out.source = v.source; out.ndiSource = $('[data-f=ndiSource]').value; out.ndiBitrate = v.ndiBitrate; out.ndiPreset = v.ndiPreset; }
+    return out;
+  };
+  PANES.input.wire = function (p) {
+    var drawList = function () {
+      var cur = $('[data-f=ndiSource]', p).value;
+      $('#ndiList').innerHTML = ndiList === 'loading' ? '<div class="note">Looking for NDI sources…</div>' : !ndiList ? '' :
+        ndiList.error ? '<div class="errbox">' + esc(ndiList.error) + '</div>' :
+        ndiList.sources.length ? ndiList.sources.map(function (s) { return '<button type="button" data-ndi="' + esc(s.name) + '" class="' + (s.name === cur ? 'on' : '') + '">' + esc(s.name) + '<small>' + esc(s.url || '') + '</small></button>'; }).join('') :
+        '<div class="note">No NDI sources found. Sources on other VLANs need a Discovery Server or their IP under Settings › NDI.</div>';
+      $$('[data-ndi]', p).forEach(function (b) { b.onclick = function () { $('[data-f=ndiSource]', p).value = b.dataset.ndi; paneDirty = true; drawList(); }; });
+    };
+    var f = $('#ndiFind', p);
+    if (f) f.onclick = function () { ndiList = 'loading'; drawList(); call('GET', 'api/ndi/sources?seconds=4').then(function (r) { ndiList = r.ok ? { sources: r.sources } : { error: r.error, sources: [] }; drawList(); }); };
+    drawList();
+  };
+
+  PANES.dests = function () {
+    var ds = S.settings.destinations;
+    return '<div class="note pnote">Each destination gets its own encode, so each can have the resolution and bitrate it needs. Encoding uses CPU: watch the CPU number in the top bar when you add more.</div>' +
+      '<div class="card"><h2>Destinations</h2>' + (ds.length ? ds.map(function (d, i) {
+        return '<div class="set' + (i ? '' : ' first') + '"><div class="sl"><b>' + esc(d.name) + '</b><span>' + TYPE_NAME[d.type] + (d.connect === 'api' ? ' account' : ' stream key') + ' · ' + (d.video.mode === 'original' ? 'original video' : (d.video.height ? d.video.height + 'p' : 'input size') + (d.video.fps ? d.video.fps : '')) + (d.armed ? '' : ' · not in Go live') + '</span></div>' +
+          '<div class="sc"><button data-mv="' + d.id + '" data-dir="-1"' + (i ? '' : ' disabled') + ' title="Move up">↑</button><button data-mv="' + d.id + '" data-dir="1"' + (i < ds.length - 1 ? '' : ' disabled') + ' title="Move down">↓</button><button data-ed="' + d.id + '">Edit</button></div></div>';
+      }).join('') : '<div class="note">No destinations yet.</div>') +
+      '<div class="set"><div class="sl"></div><div class="sc"><button class="on" id="addD">Add destination</button></div></div></div>' +
+      '<div class="card"><h2>CPU</h2><div class="note">This server: ' + esc(S.cpuModel || 'unknown CPU') + ' with ' + ST.cpu.cores + ' threads. A 1080p30 encode at "Very fast" typically uses 2–4 threads; 720p30 about half that. "Send the original" uses almost none, so use it for the destination that can take OBS\'s feed as it is.</div></div>';
+  };
+  PANES.dests.wire = function (p) {
+    $('#addD', p).onclick = function () { editDest(null); };
+    $$('[data-ed]', p).forEach(function (b) { b.onclick = function () { editDest(b.dataset.ed); }; });
+    $$('[data-mv]', p).forEach(function (b) { b.onclick = function () { call('POST', 'api/destinations/' + b.dataset.mv + '/move', { dir: Number(b.dataset.dir) }); }; });
+  };
+
+  PANES.web = function () {
+    var w = S.settings.web, url = webUrl();
+    return '<div class="note pnote">The web player shows the stream on any browser. On the church network it uses WebRTC (under a second behind). From the internet it uses HLS (a few seconds behind) and needs the player port reachable, for example through a reverse proxy or a Cloudflare Tunnel to port ' + S.ports.public + '.</div>' +
+      card('Player', set('Web player', 'Runs while the input is connected', segH('enabled', [['true', 'On'], ['false', 'Off']], String(w.enabled)), 'first') +
+        set('Title', 'Shown on the player and the waiting screen', inp('title', w.title, 'wide')) +
+        set('Waiting message', 'Shown before the stream starts', inp('offlineText', w.offlineText, 'wide')), 'web') +
+      card('Quality', set('Video', '', segH('mode', [['encode', 'Encode'], ['original', 'Original']], w.mode)) +
+        '<div id="wEnc" class="' + (w.mode === 'original' ? 'hide' : '') + '">' +
+        set('Resolution', '720p plays well on phones and weak connections', '<select data-f="height">' + opts(HEIGHTS, w.height) + '</select>') +
+        set('Frame rate', '', '<select data-f="fps">' + opts(FPSES, w.fps) + '</select>') +
+        set('Bitrate', '0 = automatic', inp('bitrate', w.bitrate, 'num', 'type="number" min="0" max="30000" step="250"') + '<span class="to">kb/s</span>') +
+        set('Quality / CPU', '', '<select data-f="preset">' + opts(PRESETS, w.preset) + '</select>') + '</div>' +
+        '<div id="wOrig" class="note ' + (w.mode === 'original' ? '' : 'hide') + '">Original sends OBS\'s video as it is. WebRTC players stutter if OBS uses B-frames, so set OBS\'s B-frames to 0 for this.</div>' +
+        set('Audio', 'AAC for HLS, Opus for WebRTC', '<select data-f="audioBitrate">' + opts([[96, '96 kb/s'], [128, '128 kb/s'], [160, '160 kb/s'], [192, '192 kb/s'], [256, '256 kb/s']], w.audioBitrate) + '</select>'), 'web') +
+      '<div class="card"><h2>Links</h2>' +
+        set('Player', esc(url), '<button data-copy="' + esc(url) + '">Copy</button>', 'first') +
+        set('Embed on a website', 'Paste into the church website', '<button data-copy="' + esc('<iframe src="' + url.replace(/\/?$/, '/embed') + '" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>') + '">Copy embed code</button>') +
+        set('Public address', 'If the player is published through a reverse proxy or tunnel, its address (e.g. https://live.example.org/). Used for the links above.', inp('publicUrl', S.settings.network.publicUrl, 'wide', 'placeholder="https://…"')) +
+        '<div class="set"><div class="sl"><span class="formerr hide" data-err></span></div><div class="sc"><button class="on" id="pubSave">Save address</button></div></div></div>';
+  };
+  PANES.web.change = function (p) { var o = segVal(p, 'mode') === 'original'; $('#wEnc').classList.toggle('hide', o); $('#wOrig').classList.toggle('hide', !o); };
+  PANES.web.prep = function (s, v) { v.enabled = v.enabled === true || v.enabled === 'true'; return v; };
+  PANES.web.wire = function (p) { $('#pubSave', p).onclick = function () { saveSection('network', { publicUrl: $('[data-f=publicUrl]', p).value, publicHosts: S.settings.network.publicHosts }).then(function (r) { if (r.ok) { paneDirty = false; } }); }; };
+
+  PANES.ndi = function () {
+    var n = S.settings.ndi, o = S.settings.ndiOut;
+    return '<div class="note pnote">NDI finds sources with mDNS on the same network. Sources on another VLAN need a Discovery Server or their IP address below.' + (S.ndi.available ? '' : '<div class="errbox" style="margin-top:8px">NDI is not available: ' + esc(S.ndi.why) + '</div>') + '</div>' +
+      card('NDI output', set('Publish the feed as NDI', 'The incoming feed shows up on the network as an NDI source (for BroadcastDecode, vMix, OBS…). Decoding uses some CPU.', segH('enabled', [['true', 'On'], ['false', 'Off']], String(o.enabled)), 'first') +
+        set('Source name', 'Appears as ' + esc(S.hostname.toUpperCase()) + ' (name)', inp('name', o.name)) +
+        set('Resolution', '', '<select data-f="height">' + opts(HEIGHTS, o.height) + '</select>') +
+        set('Frame rate', '', '<select data-f="fps">' + opts(FPSES, o.fps) + '</select>'), 'ndiOut') +
+      card('Discovery', set('Discovery Server', 'IP address of an NDI Discovery Server, if you use one', inp('discoveryServer', n.discoveryServer, 'wide', 'placeholder="192.168.1.10"'), 'first') +
+        set('Extra source IPs', 'IP addresses of NDI senders on other networks, comma separated', inp('extraIps', n.extraIps, 'wide')) +
+        set('Groups', 'Leave empty for the default "Public" group', inp('groups', n.groups, 'wide')), 'ndi') +
+      '<div class="card"><div class="note">NDI® is a registered trademark of Vizrt NDI AB. <a href="https://ndi.video" target="_blank" rel="noopener">ndi.video</a></div></div>';
+  };
+  PANES.ndi.prep = function (s, v) { if ('enabled' in v) v.enabled = v.enabled === true || v.enabled === 'true'; return v; };
+
+  PANES.rec = function () {
+    var r = S.settings.recording;
+    return '<div class="note pnote">The raw input is recorded exactly as OBS (or the NDI encoder) sent it, in segments, to <b>' + esc(ST.recording.dir) + '</b>. Use it to check what came in when something looked or sounded wrong.</div>' +
+      card('Recording', set('Record the input', 'Whenever the input is connected', segH('enabled', [['true', 'On'], ['false', 'Off']], String(r.enabled)), 'first') +
+        set('Segment length', 'A new file starts this often', inp('segmentMinutes', r.segmentMinutes, 'num', 'type="number" min="1" max="240"') + '<span class="to">min</span>') +
+        set('Keep for', '0 keeps them until you delete them', inp('keepDays', r.keepDays, 'num', 'type="number" min="0" max="3650"') + '<span class="to">days</span>') +
+        set('Size limit', 'Oldest files are deleted above this. 0 = no limit', inp('maxGB', r.maxGB, 'num', 'type="number" min="0" max="100000"') + '<span class="to">GB</span>'), 'recording') +
+      '<div class="card"><h2>Storage</h2>' + set('Used', ST.recording.count + ' files, ' + bytes(ST.recording.used) + (ST.recording.disk ? ' · ' + bytes(ST.recording.disk.free) + ' free on the dataset' : ''), '<button id="recFiles">Files</button>', 'first') + '</div>';
+  };
+  PANES.rec.prep = PANES.ndi.prep;
+  PANES.rec.wire = function (p) { $('#recFiles', p).onclick = showRecordings; };
+
+  function deviceBox(pc, name) {
+    if (!pc.pending) return '';
+    return '<div class="okbox" style="margin-top:10px">On any phone or computer, open <a href="' + esc(pc.pending.url) + '" target="_blank" rel="noopener">' + esc(pc.pending.url.replace(/^https?:\/\//, '')) + '</a>, sign in to ' + name + ' and enter this code:<br><span class="code">' + esc(pc.pending.userCode) + '</span><br><span class="note">This page updates when you are done. <button class="link" data-cancel>Cancel</button></span></div>';
+  }
+  PANES.youtube = function () {
+    var y = S.settings.youtube, pc = ST.platforms.youtube;
+    return '<div class="note pnote">Connect your YouTube channel so BroadcastRelay can create the broadcast with its title and end it for you. Or skip this and use a stream key on the destination.</div>' +
+      '<div class="card" data-live="yt"></div>' +
+      card('OAuth client', '<ol class="steps" style="margin:0 0 6px;padding-left:20px;color:var(--dim);font-size:13px">' +
+        '<li>In <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>, create a project and enable the <b>YouTube Data API v3</b>.</li>' +
+        '<li>OAuth consent screen: External, add your Google account as a test user (or publish the app).</li>' +
+        '<li>Credentials › Create OAuth client ID › type <b>TVs and Limited Input devices</b>.</li>' +
+        '<li>Paste the client ID and secret here, save, then Connect.</li></ol>' +
+        set('Client ID', '', inp('clientId', y.clientId, 'wide')) +
+        set('Client secret', y.hasSecret ? 'Saved' : '', '<input data-f="clientSecret" type="password" class="wide" autocomplete="new-password" placeholder="' + (y.hasSecret ? 'Saved. Type to replace' : '') + '">'), 'youtube');
+  };
+  PANES.youtube.live = function (p) {
+    var el = $('[data-live=yt]', p); if (!el) return;
+    var pc = ST.platforms.youtube;
+    var html = '<h2>Account</h2>' + set(pc.connected ? 'Connected' : 'Not connected', pc.connected ? 'Channel: ' + esc(pc.channelTitle || '…') : 'Save the OAuth client below first', pc.connected ? '<button class="danger" data-yt="disconnect">Disconnect</button>' : '<button class="on" data-yt="connect"' + (S.settings.youtube.clientId && S.settings.youtube.hasSecret ? '' : ' disabled') + '>Connect</button>', 'first') +
+      (pc.connectError ? '<div class="errbox">' + esc(pc.connectError) + '</div>' : '') + deviceBox(pc, 'the Google account that owns the channel');
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+      $$('[data-yt]', el).forEach(function (b) { b.onclick = function () { act('api/youtube/' + b.dataset.yt); }; });
+      $$('[data-cancel]', el).forEach(function (b) { b.onclick = function () { act('api/youtube/cancel'); }; });
+    }
+  };
+  PANES.facebook = function () {
+    var f = S.settings.facebook;
+    return '<div class="note pnote">Connect a Facebook Page so BroadcastRelay can start a live video with its title and end it for you. Or skip this and use a stream key (Facebook calls it a persistent stream key) on the destination.</div>' +
+      '<div class="card" data-live="fb"></div>' +
+      card('Meta app (sign in with a code)', '<ol class="steps" style="margin:0 0 6px;padding-left:20px;color:var(--dim);font-size:13px">' +
+        '<li>At <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com</a>, create an app (type Business).</li>' +
+        '<li>Add <b>Facebook Login for Business</b>, and under its settings turn on <b>Login from Devices</b>.</li>' +
+        '<li>App settings › Advanced: copy the <b>Client token</b>. App settings › Basic: copy the App ID and App secret.</li>' +
+        '<li>Your account must be an admin of the app and of the Page. Paste the values, save, then Connect.</li></ol>' +
+        set('App ID', '', inp('appId', f.appId)) +
+        set('Client token', f.hasClientToken ? 'Saved' : '', '<input data-f="clientToken" type="password" class="wide" autocomplete="new-password" placeholder="' + (f.hasClientToken ? 'Saved. Type to replace' : '') + '">') +
+        set('App secret', 'Optional. Makes the sign-in last (otherwise about 60 days)', '<input data-f="appSecret" type="password" class="wide" autocomplete="new-password" placeholder="' + (f.hasAppSecret ? 'Saved. Type to replace' : '') + '">') +
+        set('Graph API version', '', inp('graphVersion', f.graphVersion, 'txt')), 'facebook') +
+      '<div class="card"><h2>Or paste a Page token</h2><div class="note">From the Graph API Explorer: a Page access token with publish_video and pages_manage_posts.</div>' +
+        set('Page ID', '', '<input id="fbPid" class="txt" value="' + esc(f.pageId || '') + '">') +
+        set('Page access token', '', '<input id="fbTok" type="password" class="wide" autocomplete="new-password">') +
+        '<div class="set"><div class="sl"></div><div class="sc"><button class="on" id="fbUseTok">Use this token</button></div></div></div>';
+  };
+  PANES.facebook.live = function (p) {
+    var el = $('[data-live=fb]', p); if (!el) return;
+    var pc = ST.platforms.facebook, f = S.settings.facebook;
+    var pages = pc.pages && pc.pages.length > 1 && pc.userConnected ? set('Page', 'Which Page goes live', '<select id="fbPage">' + opts(pc.pages.map(function (x) { return [x.id, x.name]; }), f.pageId) + '</select>') : '';
+    var html = '<h2>Page</h2>' + set(pc.connected ? 'Connected' : 'Not connected', pc.connected ? 'Page: ' + esc(pc.pageName) : 'Save the Meta app below first, or paste a Page token', (pc.connected || pc.userConnected ? '<button class="danger" data-fb="disconnect">Disconnect</button>' : '') + '<button class="on" data-fb="connect"' + (f.appId && f.hasClientToken ? '' : ' disabled') + '>' + (pc.connected ? 'Connect again' : 'Connect') + '</button>', 'first') +
+      pages + (pc.pagesError ? '<div class="errbox">' + esc(pc.pagesError) + '</div>' : '') + (pc.connectError ? '<div class="errbox">' + esc(pc.connectError) + '</div>' : '') + deviceBox(pc, 'Facebook');
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+      $$('[data-fb]', el).forEach(function (b) { b.onclick = function () { act('api/facebook/' + b.dataset.fb); }; });
+      $$('[data-cancel]', el).forEach(function (b) { b.onclick = function () { act('api/facebook/cancel'); }; });
+      var sel = $('#fbPage', el); if (sel) sel.onchange = function () { call('POST', 'api/facebook/page', { pageId: sel.value }).then(function (r) { toast(r.ok ? 'Page chosen' : r.error, r.ok); }); };
+    }
+  };
+  PANES.facebook.wire = function (p) {
+    $('#fbUseTok', p).onclick = function () {
+      call('POST', 'api/facebook/token', { pageId: $('#fbPid', p).value, pageToken: $('#fbTok', p).value }).then(function (r) { toast(r.ok ? 'Connected' : r.error, r.ok); if (r.ok) $('#fbTok', p).value = ''; });
+    };
+  };
+
+  PANES.companion = function () {
+    var base = location.protocol + '//' + location.host + '/api/v1', tok = S.apiToken;
+    var ds = S.settings.destinations;
+    var ex = function (m, path, note) { return '<tr><td><code>' + m + ' ' + esc(path) + '</code></td><td>' + note + '</td></tr>'; };
+    return '<div class="note pnote">Bitfocus Companion controls BroadcastRelay with its <b>Generic HTTP</b> connection. Send the token in a header <code>Authorization: Bearer &lt;token&gt;</code>, or add <code>?token=&lt;token&gt;</code> to the address.</div>' +
+      '<div class="card"><h2>Token</h2><div class="copyrow"><pre class="cmd">' + esc(tok) + '</pre><button data-copy="' + esc(tok) + '">Copy</button></div>' +
+        set('New token', 'The old one stops working, so update Companion', '<button class="danger" id="newTok">New token</button>') + '</div>' +
+      '<div class="card"><h2>Base address</h2><div class="copyrow"><pre class="cmd">' + esc(base) + '</pre><button data-copy="' + esc(base) + '">Copy</button></div></div>' +
+      '<div class="card"><h2>Actions (POST)</h2><table class="kv">' +
+        ex('POST', '/golive', 'Start every destination marked for Go live, and the web player') +
+        ex('POST', '/end', 'Stop every destination (ends YouTube/Facebook broadcasts)') +
+        ex('POST', '/destinations/<name or id>/start', 'Also <code>stop</code> and <code>toggle</code>. Name, id or number (1 = first)') +
+        ex('POST', '/web/start', 'Web player: <code>start</code>, <code>stop</code>, <code>toggle</code>') +
+        ex('POST', '/ndi-out/toggle', 'NDI output: <code>start</code>, <code>stop</code>, <code>toggle</code>') +
+        ex('POST', '/recording/on', 'Recording: <code>on</code>, <code>off</code>, <code>toggle</code>') +
+        ex('POST', '/input/source/ndi', 'Switch the input: <code>stream</code> or <code>ndi</code>') +
+      '</table></div>' +
+      '<div class="card"><h2>Status for feedback (GET)</h2><table class="kv">' +
+        ex('GET', '/status', 'JSON with <code>any_live</code>, <code>input_live</code>, <code>recording</code>, <code>web_viewers</code>, <code>loudness_short</code>, <code>cpu</code> and <code>destinations.&lt;id&gt;.live</code>') +
+      '</table>' + (ds.length ? '<div class="note" style="margin-top:8px">Destination ids: ' + ds.map(function (d) { return esc(d.name) + ' = <code>' + d.id + '</code>'; }).join(' · ') + '</div>' : '') +
+      '<div class="note" style="margin-top:8px">In Companion, a Generic HTTP connection can poll <code>/status</code> into variables (JSON path e.g. <code>$.any_live</code>) and color buttons from them.</div></div>';
+  };
+  PANES.companion.wire = function (p) { $('#newTok', p).onclick = function () { confirmBox('Make a new token?', 'Companion buttons stop working until you paste the new token into Companion.', 'New token', function () { act('api/apitoken', 'New token made'); }, true); }; };
+
+  PANES.network = function () {
+    var p = S.settings.ports;
+    var row = function (k, label, sub) { return set(label, sub, inp(k, p[k], 'num', 'type="number" min="1" max="65535"')); };
+    return '<div class="note pnote">BroadcastRelay uses the server\'s network directly (host networking, needed for NDI), so these ports must not be used by another app on the server. The control page is on port ' + S.ports.control + ' and the web player on ' + S.ports.public + ' (set in the app\'s environment).</div>' +
+      card('Ports', row('srt', 'SRT (UDP)', 'OBS sends here') + row('rtmp', 'RTMP (TCP)', 'OBS sends here') + row('webrtc', 'WHIP / WebRTC (TCP)', 'OBS WHIP and the player\'s WebRTC signaling') + row('ice', 'WebRTC media (UDP)', 'Video to WebRTC viewers') +
+        row('rtsp', 'Internal RTSP (TCP)', 'Only on this server') + row('hls', 'Internal HLS (TCP)', 'Only on this server') + row('api', 'Internal API (TCP)', 'Only on this server'), 'ports', 'Save (restarts the relay)') +
+      card('WebRTC from outside', set('Public host names or IPs', 'Only if WebRTC viewers connect from outside your network: the addresses they can reach this server at. Most setups leave this empty (outside viewers use HLS).', inp('publicHosts', S.settings.network.publicHosts, 'wide')), 'network');
+  };
+  PANES.network.prep = function (s, v) { if (s === 'network') v.publicUrl = S.settings.network.publicUrl; return v; };
+
+  PANES.system = function () {
+    return card('Password', set('Current password', '', '<input type="password" id="pwOld" class="wide" autocomplete="current-password">', 'first') + set('New password', 'At least 8 characters. Other signed-in browsers are signed out.', '<input type="password" id="pwNew" class="wide" autocomplete="new-password">') +
+        '<div class="set"><div class="sl"></div><div class="sc"><button id="pwSave" class="on">Change</button><button id="logout">Sign out</button></div></div>') +
+      card('Appearance', set('Theme', 'Auto follows this device', '<div class="seg" id="themeSeg"><button data-v="auto">Auto</button><button data-v="dark">Dark</button><button data-v="light">Light</button></div>', 'first')) +
+      '<div class="card"><h2>Processes</h2><div id="procs" class="note">Loading…</div><div class="set"><div class="sl"></div><div class="sc"><button id="logRef">Refresh</button></div></div></div>' +
+      '<div class="card"><h2>About</h2><div class="note">BroadcastRelay ' + esc(S.version) + ' · Jerod Ulicki · Uses MediaMTX and FFmpeg. NDI® is a registered trademark of Vizrt NDI AB.</div></div>';
+  };
+  PANES.system.wire = function (p) {
+    var paintTheme = function () { $$('#themeSeg button', p).forEach(function (b) { b.classList.toggle('on', b.dataset.v === themePref); }); };
+    paintTheme();
+    $$('#themeSeg button', p).forEach(function (b) { b.onclick = function () { themePref = b.dataset.v; try { localStorage.setItem('br-theme', themePref); } catch (e) {} var light = themePref === 'light' || (themePref === 'auto' && matchMedia('(prefers-color-scheme: light)').matches); document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark'); paintTheme(); }; });
+    $('#pwSave', p).onclick = function () { call('POST', 'api/password', { current: $('#pwOld').value, password: $('#pwNew').value }).then(function (r) { toast(r.ok ? 'Password changed' : r.error, r.ok); if (r.ok) { $('#pwOld').value = ''; $('#pwNew').value = ''; } }); };
+    $('#logout', p).onclick = function () { call('POST', 'api/logout').then(function () { showLogin(false); }); };
+    var load = function () {
+      call('GET', 'api/log').then(function (r) {
+        if (!r.ok) return;
+        $('#procs', p).innerHTML = r.procs.map(function (x) {
+          return '<div style="margin-top:8px"><b style="color:var(--fg)">' + esc(x.name) + '</b> ' + chipFor(x.state) + (x.error ? ' <span class="bad">' + esc(x.error) + '</span>' : '') + (x.tail.length ? '<pre class="tailbox">' + esc(x.tail.join('\n')) + '</pre>' : '') + '</div>';
+        }).join('') + '<div style="margin-top:12px"><b style="color:var(--fg)">MediaMTX log</b><pre class="tailbox" style="max-height:220px">' + esc(r.mediamtx.join('\n')) + '</pre></div>';
+      });
+    };
+    $('#logRef', p).onclick = load; load();
+  };
+
+  start();
+})();
+</script>
+</body>
+</html>

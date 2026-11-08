@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+test
+data
+recordings
+*.md
+*.zip
+ndi/ndi-bridge
+ndi/sdk

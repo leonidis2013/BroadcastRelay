@@ -1,0 +1,27 @@
+# docker compose up -d
+# Then open http://<this machine's IP>:9180, choose a password, and add destinations.
+# Settings and sign-ins are kept in the broadcastrelay-data volume; recordings in ./recordings.
+# Host networking: NDI discovery and WebRTC need the container on the machine's own network,
+# so the ports below must be free on this machine (change PORT / PUBLIC_PORT, and the others
+# under Settings > Ports, if they clash).
+services:
+  broadcastrelay:
+    image: ghcr.io/leonidis2013/broadcastrelay:latest
+    build: .
+    container_name: broadcastrelay
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - broadcastrelay-data:/data
+      - ./recordings:/recordings
+    environment:
+      TZ: America/Chicago
+      PORT: 9180          # control page
+      PUBLIC_PORT: 9181   # web player
+      # RUN_UID: 1000     # user that writes the recordings
+      # RUN_GID: 1000
+      # NDI_AVAHI: auto   # auto | host | off (see README)
+      # BROADCASTRELAY_MASTER_KEY: "a long random value"   # keeps the key for saved tokens off the volume
+
+volumes:
+  broadcastrelay-data:

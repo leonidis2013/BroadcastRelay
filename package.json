@@ -1,0 +1,17 @@
+{
+  "name": "broadcastrelay",
+  "version": "0.1.0",
+  "description": "Docker relay for church streaming: takes the feed from OBS (SRT, RTMP, WHIP) or an NDI source, sends a separate encode to YouTube, Facebook and other destinations, serves a web player (WebRTC on the LAN, HLS for the public), records the raw input, publishes the feed as NDI, and is controlled from a web page and Bitfocus Companion",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node server.js --demo",
+    "test": "node test/run.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "author": "Jerod Ulicki",
+  "license": "UNLICENSED",
+  "private": true
+}

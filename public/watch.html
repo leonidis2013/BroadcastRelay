@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Live</title>
+<style>
+  :root { --bg:#000; --fg:#e8edf3; --dim:#9aa5b1; --acc:#4c8dff; --bad:#ef4c4c; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#000; }
+  video { width:100%; height:100%; object-fit:contain; background:#000; }
+  .off { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px;
+         background:radial-gradient(ellipse at center, #141a22 0%, #000 70%); }
+  .off h1 { margin:0; font-size:clamp(20px, 4vw, 34px); font-weight:700; letter-spacing:.02em; }
+  .off p { margin:0; color:var(--dim); font-size:clamp(14px, 2.2vw, 18px); max-width:640px; }
+  .pulse { width:12px; height:12px; border-radius:50%; background:var(--dim); animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.25; } }
+  .bar { position:absolute; left:0; right:0; top:0; display:flex; align-items:center; gap:10px; padding:12px 16px; padding-top:calc(12px + env(safe-area-inset-top));
+         background:linear-gradient(#000a, #0000); opacity:0; transition:opacity .3s; pointer-events:none; }
+  .wrap:hover .bar, .wrap.show .bar { opacity:1; }
+  .live { background:var(--bad); color:#fff; font-weight:800; font-size:11px; letter-spacing:.1em; padding:3px 8px; border-radius:4px; }
+  .bar .t { font-weight:600; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar .m { font-size:12px; color:var(--dim); }
+  .unmute { position:absolute; left:50%; bottom:calc(28px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:#fff; color:#000; border:0; border-radius:999px;
+            padding:10px 18px; font:600 15px system-ui, sans-serif; cursor:pointer; box-shadow:0 6px 24px #0008; display:flex; align-items:center; gap:8px; }
+  .unmute svg { width:18px; height:18px; }
+  .hide { display:none !important; }
+  body.embed .bar .t { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <video id="v" playsinline muted autoplay></video>
+  <div class="bar"><span class="live">LIVE</span><span class="t" id="title"></span><span class="m" id="mode"></span></div>
+  <button class="unmute hide" id="unmute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6"/></svg>Tap for sound</button>
+  <div class="off" id="off"><div class="pulse"></div><h1 id="offTitle">Live</h1><p id="offText">The stream will start soon.</p></div>
+</div>
+<script src="whep.js"></script>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var embed = /\/embed$/.test(location.pathname) || q.has('embed');
+  var force = q.get('mode'); // webrtc | hls
+  if (embed) document.body.classList.add('embed');
+  var v = document.getElementById('v'), off = document.getElementById('off'), wrap = document.getElementById('wrap');
+  var player = null, hls = null, mode = '', info = {}, failedRtcAt = 0, playing = false;
+
+  function base() { return location.pathname.replace(/\/(watch|embed)?$/, '') || ''; }
+  function setMode(m) { mode = m; document.getElementById('mode').textContent = m === 'webrtc' ? 'Low latency' : m === 'hls' ? '' : ''; }
+  function showOff(on) { off.classList.toggle('hide', !on); }
+
+  function stopAll() {
+    if (player) { player.stop(); player = null; }
+    if (hls) { hls.destroy(); hls = null; }
+    v.removeAttribute('src'); try { v.load(); } catch (e) {}
+    playing = false; setMode('');
+  }
+
+  function startWebrtc() {
+    setMode('webrtc');
+    player = whepPlay(v, base() + '/whep', function (st) {
+      if (st === 'playing') { playing = true; showOff(false); afterPlay(); }
+      if (st === 'failed') { failedRtcAt = Date.now(); player = null; playing = false; if (info.live) startHls(); }
+    });
+  }
+  function loadHlsJs(cb) {
+    if (window.Hls) return cb();
+    var s = document.createElement('script'); s.src = base() + '/vendor/hls.min.js'; s.onload = cb; s.onerror = cb; document.head.appendChild(s);
+  }
+  function startHls() {
+    setMode('hls');
+    var src = base() + '/hls/index.m3u8';
+    if (v.canPlayType('application/vnd.apple.mpegurl')) {
+      v.src = src;
+      v.play().catch(function () {});
+    } else {
+      loadHlsJs(function () {
+        if (!window.Hls || !Hls.isSupported()) { document.getElementById('offText').textContent = 'This browser cannot play the stream.'; return; }
+        hls = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 3, backBufferLength: 30 });
+        hls.loadSource(src); hls.attachMedia(v);
+        hls.on(Hls.Events.MANIFEST_PARSED, function () { v.play().catch(function () {}); });
+        hls.on(Hls.Events.ERROR, function (e, d) { if (d.fatal) { stopAll(); } });
+      });
+    }
+  }
+  v.addEventListener('playing', function () { playing = true; showOff(false); afterPlay(); });
+  function afterPlay() { document.getElementById('unmute').classList.toggle('hide', !v.muted); }
+  document.getElementById('unmute').onclick = function () { v.muted = false; v.play().catch(function () {}); afterPlay(); };
+  wrap.addEventListener('click', function (e) { if (e.target === v && v.muted && playing) { v.muted = false; afterPlay(); } wrap.classList.add('show'); setTimeout(function () { wrap.classList.remove('show'); }, 2500); });
+
+  function poll() {
+    fetch(base() + '/player.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      info = j;
+      document.title = j.title || 'Live';
+      document.getElementById('title').textContent = j.title || '';
+      document.getElementById('offTitle').textContent = j.title || 'Live';
+      document.getElementById('offText').textContent = j.offlineText || '';
+      if (!j.live && !j.webrtc) { if (mode) stopAll(); showOff(true); return; }
+      if (mode) return; // already playing or trying
+      var tryRtc = force !== 'hls' && j.webrtc && window.RTCPeerConnection && Date.now() - failedRtcAt > 120000;
+      if (force === 'webrtc' || tryRtc) startWebrtc(); else if (j.live) startHls();
+    }).catch(function () {}).then(function () { setTimeout(poll, 4000); });
+  }
+  v.addEventListener('ended', stopAll);
+  poll();
+})();
+</script>
+</body>
+</html>

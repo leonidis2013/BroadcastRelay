@@ -1,0 +1,32 @@
+# TrueNAS SCALE: Apps > Discover Apps > Custom App > "Install via YAML", paste this.
+#
+# Before installing:
+#  1. Make a dataset for the recordings (e.g. tank/broadcastrelay/recordings) and change the
+#     path below to it. Give user 1000 write access (ACL entry for user 1000, or chown 1000:1000),
+#     or set RUN_UID/RUN_GID to a user that already has access (the TrueNAS "apps" user is 568).
+#  2. Host networking: the container uses the TrueNAS IP directly (needed for NDI and WebRTC).
+#     These ports must be free on TrueNAS: 9180, 9181 (web pages), 1935 (RTMP), 8889 (WHIP),
+#     8890/udp (SRT), 8189/udp (WebRTC media), and 127.0.0.1-only 8554, 8888, 9997.
+#     The TrueNAS web UI uses 80/443, so these don't clash with it. Change PORT/PUBLIC_PORT here
+#     and the others on the Ports page if another app uses them.
+# Settings, sign-ins and keys are kept in the broadcastrelay-data volume (Docker's own storage).
+services:
+  broadcastrelay:
+    image: ghcr.io/leonidis2013/broadcastrelay:latest
+    container_name: broadcastrelay
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - broadcastrelay-data:/data
+      - /mnt/tank/broadcastrelay/recordings:/recordings
+    environment:
+      TZ: America/Chicago
+      PORT: "9180"
+      PUBLIC_PORT: "9181"
+      RUN_UID: "1000"
+      RUN_GID: "1000"
+      # optional: keeps the encryption key for stream keys and sign-ins off the volume
+      # BROADCASTRELAY_MASTER_KEY: "a long random value"
+
+volumes:
+  broadcastrelay-data:

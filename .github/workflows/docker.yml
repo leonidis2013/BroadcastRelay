@@ -1,0 +1,56 @@
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install FFmpeg for the tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Run tests
+        run: npm test
+
+      - name: Read version from package.json
+        id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 for a PC or server (TrueNAS), arm64 for a Raspberry Pi 5 or other ARM box
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ghcr.io/leonidis2013/broadcastrelay:latest
+            ghcr.io/leonidis2013/broadcastrelay:${{ steps.ver.outputs.v }}
+          labels: |
+            org.opencontainers.image.title=BroadcastRelay
+            org.opencontainers.image.version=${{ steps.ver.outputs.v }}
+            org.opencontainers.image.source=https://github.com/leonidis2013/BroadcastRelay
