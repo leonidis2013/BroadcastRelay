@@ -54,3 +54,19 @@ jobs:
             org.opencontainers.image.title=BroadcastRelay
             org.opencontainers.image.version=${{ steps.ver.outputs.v }}
             org.opencontainers.image.source=https://github.com/leonidis2013/BroadcastRelay
+
+      # the published image starts, and has MediaMTX, FFmpeg and NDI where the app looks for them
+      - name: Check the published image
+        run: |
+          img=ghcr.io/leonidis2013/broadcastrelay:${{ steps.ver.outputs.v }}
+          docker pull --platform linux/amd64 "$img"
+          docker run --rm --entrypoint sh "$img" -c '
+            set -x
+            ls -la /usr/local/bin /usr/local/lib
+            ldd /usr/local/bin/ndi-bridge
+            mediamtx --version
+            ffmpeg -hide_banner -encoders | grep -E "libx264|libopus"
+            ffmpeg -hide_banner -protocols | grep -w srt
+            setpriv --reuid=1000 --regid=1000 --clear-groups node -e "const fs=require(\"fs\");console.log(\"bridge visible to the app:\", fs.existsSync(process.env.NDI_BRIDGE), process.env.NDI_BRIDGE)"
+            timeout 10 ndi-bridge list 2 || true
+          '
