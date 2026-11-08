@@ -310,14 +310,20 @@ test('ndi-bridge + ffmpeg: NDI in produces H.264 + PCM in step (gcc, ffmpeg)', a
   assert.deepStrictEqual([fmt.width, fmt.height, fmt.fpsN, fmt.fpsD], [640, 360, 30000, 1001]);
   const args = F.ndiIngest(fmt, v, a, { ndiBitrate: 2000, ndiPreset: 'ultrafast' }, 'rtsp://unused');
   const i = args.indexOf('-f', args.indexOf('pcm_s24be'));
-  const ff = args.slice(0, i).concat(['-t', '3', '-y', '-f', 'matroska', out]);
-  const r = spawnSync('ffmpeg', ff, { encoding: 'utf8', timeout: 30000 });
-  bridge.kill();
-  assert.strictEqual(r.status, 0, r.stderr);
+  // like the app: FFmpeg runs until the bridge goes away, then sees the end of both pipes
+  const ff = spawn('ffmpeg', args.slice(0, i).concat(['-y', '-f', 'matroska', out]), { stdio: ['ignore', 'ignore', 'pipe'] });
+  let err = ''; ff.stderr.on('data', (x) => { err += x; });
+  await new Promise((r) => setTimeout(r, 3500));
+  bridge.kill('SIGTERM');
+  const code = await new Promise((resolve) => {
+    const t = setTimeout(() => { ff.kill('SIGKILL'); resolve('timeout'); }, 15000);
+    ff.on('exit', (c) => { clearTimeout(t); resolve(c); });
+  });
+  assert.strictEqual(code, 0, 'ffmpeg ' + code + ': ' + err.slice(-500));
   const pr = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,width:format=duration', '-of', 'json', out], { encoding: 'utf8' });
   const j = JSON.parse(pr.stdout);
   assert.deepStrictEqual(j.streams.map((s) => s.codec_name), ['h264', 'pcm_s24be']);
-  assert.ok(Math.abs(Number(j.format.duration) - 3) < 0.3, 'duration ' + j.format.duration);
+  assert.ok(Number(j.format.duration) > 2.5 && Number(j.format.duration) < 4.5, 'duration ' + j.format.duration);
 });
 
 // ---------- run ----------
@@ -325,7 +331,8 @@ test('ndi-bridge + ffmpeg: NDI in produces H.264 + PCM in step (gcc, ffmpeg)', a
   let failed = 0;
   for (const t of tests) {
     try {
-      const r = await t.fn();
+      // no single test may hang the run (CI)
+      const r = await Promise.race([t.fn(), new Promise((_, no) => setTimeout(() => no(new Error('timed out after 60 s')), 60000).unref())]);
       console.log('ok   ' + t.name + (typeof r === 'string' && r.startsWith('skipped') ? ' (' + r + ')' : ''));
     } catch (e) { failed++; console.log('FAIL ' + t.name + '\n     ' + (e.stack || e).toString().split('\n').slice(0, 4).join('\n     ')); }
   }
