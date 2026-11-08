@@ -61,12 +61,13 @@ jobs:
           img=ghcr.io/leonidis2013/broadcastrelay:${{ steps.ver.outputs.v }}
           docker pull --platform linux/amd64 "$img"
           docker run --rm --entrypoint sh "$img" -c '
-            set -x
+            set -ex
             ls -la /usr/local/bin /usr/local/lib
-            ldd /usr/local/bin/ndi-bridge
             mediamtx --version
             ffmpeg -hide_banner -encoders | grep -E "libx264|libopus"
             ffmpeg -hide_banner -protocols | grep -w srt
             setpriv --reuid=1000 --regid=1000 --clear-groups node -e "const fs=require(\"fs\");console.log(\"bridge visible to the app:\", fs.existsSync(process.env.NDI_BRIDGE), process.env.NDI_BRIDGE)"
+            test -x /usr/local/bin/ndi-bridge || { echo "ndi-bridge is missing from the image"; exit 1; }
+            ldd /usr/local/bin/ndi-bridge | grep -q "not found" && { echo "ndi-bridge is missing a library"; exit 1; }
             timeout 10 ndi-bridge list 2 || true
           '

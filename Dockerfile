@@ -15,7 +15,7 @@ FROM debian:bookworm-slim AS ndi
 ARG TARGETARCH
 ARG WITH_NDI
 ARG NDI_SDK_URL=https://downloads.ndi.tv/SDK/NDI_SDK_Linux/Install_NDI_SDK_v6_Linux.tar.gz
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev libavahi-client3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY ndi/ndi-bridge.c docker/build-ndi.sh ./
 RUN TARGETARCH="$TARGETARCH" WITH_NDI="$WITH_NDI" NDI_SDK_URL="$NDI_SDK_URL" sh ./build-ndi.sh
