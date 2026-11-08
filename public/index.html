@@ -123,7 +123,7 @@
   .sl span:empty { display:none; }
   .sc { flex:0 1 auto; display:flex; gap:6px; align-items:center; justify-content:flex-end; flex-wrap:wrap; min-width:0; }
   .sc input.txt { width:120px; max-width:100%; }
-  .sc input.num { width:72px; text-align:center; }
+  .sc input.num { width:88px; text-align:center; }
   .sc input.wide { width:190px; max-width:100%; }
   .sc select { max-width:170px; }
   .sc .to { font-size:12px; color:var(--dim); }
@@ -522,7 +522,7 @@
   }
 
   // ---------- main ----------
-  var cardsKey = '';
+  var cardsKey = null; // null so the cards are built on the first draw, even with no destinations
   function renderMain() {
     renderInput();
     var g = $('#grid');
