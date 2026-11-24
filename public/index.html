@@ -227,9 +227,11 @@
   .chip.a { background:color-mix(in srgb, var(--acc) 16%, transparent); color:var(--acc); }
 
   /* input: preview + meters */
-  .inrow { display:grid; grid-template-columns:minmax(0, 520px) minmax(0, 1fr) 230px; gap:14px; align-items:start; }
+  .inrow { display:grid; grid-template-columns:minmax(0, 520px) minmax(0, 1fr) 230px; gap:14px; align-items:stretch; }
+  .inrow > .pv, .inrow > .meters { align-self:start; }
+  .mid { display:flex; flex-direction:column; min-width:0; gap:10px; }
   .inr { border-top:0; } .inr .row:first-child { padding-top:0; }
-  @media (max-width:1100px) { .inrow { grid-template-columns:minmax(0, 1fr) 230px; } .inr { grid-column:1/-1; order:3; border-top:1px solid var(--line); } }
+  @media (max-width:1100px) { .inrow { grid-template-columns:minmax(0, 1fr) 230px; } .mid { grid-column:1/-1; order:3; } .inr { border-top:1px solid var(--line); } }
   .pv { position:relative; aspect-ratio:16/9; background:#000; border-radius:8px; overflow:hidden; }
   .pv video { width:100%; height:100%; object-fit:contain; display:block; }
   .pv .ov { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:#9aa5b1; font-size:13px; text-align:center; padding:10px; }
@@ -248,13 +250,14 @@
   .tgt { font-size:11px; color:var(--dim); }
 
   /* loudness history */
-  .hist { margin-top:4px; }
+  .hist { display:flex; flex-direction:column; flex:1; min-height:0; }
   .hist .hh { display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
   .hist .hh b { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); }
   .hist .key { display:flex; gap:12px; font-size:11.5px; color:var(--dim); margin-left:auto; flex-wrap:wrap; }
   .hist .key i { display:inline-block; width:14px; height:3px; border-radius:2px; vertical-align:middle; margin-right:5px; }
   .hist .seg button { padding:3px 9px; font-size:12px; }
-  .hist canvas { width:100%; height:150px; display:block; background:var(--inset); border-radius:8px; }
+  .hist .hc { position:relative; flex:1; min-height:150px; }
+  .hist canvas { position:absolute; inset:0; width:100%; height:100%; display:block; background:var(--inset); border-radius:8px; }
   /* viewers */
   table.vw { width:100%; border-collapse:collapse; font-size:13px; }
   table.vw th { text-align:left; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); font-weight:700; padding:6px 6px; border-bottom:1px solid var(--line); }
@@ -267,6 +270,7 @@
 
   /* stream info card */
   #infoCard .ititle { font-size:19px; font-weight:700; line-height:1.25; overflow-wrap:anywhere; }
+  #infoCard .isermon { font-size:14px; margin-top:2px; } #infoCard .isermon b { font-weight:600; }
   #infoCard .idesc { color:var(--dim); font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:3.9em; overflow:hidden; margin-top:4px; }
   #infoCard .irow { display:flex; gap:12px; align-items:flex-start; }
   #infoCard .irow > div:first-child { flex:1; min-width:0; }
@@ -318,7 +322,7 @@
   .ndis button.on { background:var(--acc); color:var(--onacc); }
   .ndis small { opacity:.7; font-weight:400; margin-left:auto; font-family:var(--mono); font-size:11px; }
   @media (max-width:720px) {
-    .inrow { grid-template-columns:1fr; } .inr { order:2; }
+    .inrow { grid-template-columns:1fr; } .mid { order:2; }
     header h1 { flex:1 1 auto; }
     .mbox canvas { height:120px; }
     #goLive, #endAll { order:1; }
@@ -356,7 +360,14 @@
       <div class="dh"><span class="dot" id="inDot"></span><div class="dn">Input</div><div class="chips" id="inChips"></div></div>
       <div class="inrow">
         <div class="pv"><video id="pvVid" muted playsinline autoplay></video><div class="ov" id="pvOv"><b>No input</b><span id="pvOvTxt"></span></div><span class="tag2 hide" id="pvLive">LIVE</span><button class="pvb" id="pvBtn">Preview off</button></div>
+        <div class="mid">
         <div class="rows inr" id="inRows"></div>
+        <div class="hist">
+        <div class="hh"><b>Loudness history</b><div class="seg" id="histWin"><button data-m="1">1 min</button><button data-m="5">5 min</button><button data-m="10">10 min</button><button data-m="30">30 min</button><button data-m="60">60 min</button></div>
+          <div class="key"><span><i style="background:var(--acc)"></i>Short-term</span><span><i style="background:color-mix(in srgb, var(--acc) 35%, transparent);height:8px"></i>Momentary</span><span><i style="background:var(--bad)"></i>Peak over −1</span><span><i style="background:color-mix(in srgb, var(--ok) 30%, transparent);height:8px"></i>Target</span></div></div>
+        <div class="hc"><canvas id="histCan"></canvas></div>
+        </div>
+        </div>
         <div class="meters">
           <div class="mbox"><canvas id="mCan" width="124" height="400"></canvas>
             <div class="lufs">
@@ -369,11 +380,6 @@
           </div>
           <div class="tgt">Streaming target: about −16 to −14 LUFS short-term, true peak below −1 dBTP. YouTube and Facebook turn down anything louder.</div>
         </div>
-      </div>
-          <div class="hist">
-        <div class="hh"><b>Loudness history</b><div class="seg" id="histWin"><button data-m="1">1 min</button><button data-m="5">5 min</button><button data-m="10">10 min</button><button data-m="30">30 min</button><button data-m="60">60 min</button></div>
-          <div class="key"><span><i style="background:var(--acc)"></i>Short-term</span><span><i style="background:color-mix(in srgb, var(--acc) 35%, transparent);height:8px"></i>Momentary</span><span><i style="background:var(--bad)"></i>True peak over −1</span><span><i style="background:color-mix(in srgb, var(--ok) 30%, transparent);height:8px"></i>Target −16…−14</span></div></div>
-        <canvas id="histCan" height="300"></canvas>
       </div>
     </article>
     <article class="dev wide" id="infoCard"></article>
@@ -592,8 +598,10 @@
       .replace(/\{time\}/g, now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
   }
   function samePreset(p, v) { return INFO_KEYS.every(function (k) { return (p[k] || '') === (v[k] || ''); }); }
+  function hasType(t) { return S.settings.destinations.some(function (d) { return d.type === t; }); }
   function renderInfo() {
     var st = S.settings.stream, el = $('#infoCard');
+    var yt = hasType('youtube');
     var preset = st.presets.find(function (p) { return p.id === st.presetId; });
     // only account-connected destinations can be given a title; stream-key ones use whatever is set on the platform
     var uses = S.settings.destinations.filter(function (d) { return d.connect === 'api' && d.useShared !== false; }).map(function (d) { return d.name; });
@@ -604,9 +612,10 @@
       (preset ? '<span class="chip a">' + esc(preset.name) + '</span>' : '') +
       (ST.stream.broadcasts ? '<span class="chip l">On air · edits update ' + ST.stream.broadcasts + ' broadcast' + (ST.stream.broadcasts > 1 ? 's' : '') + '</span>' : '') + '</div></div>' +
       '<div class="irow"><div><div class="ititle">' + esc(ST.stream.title) + '</div>' +
+      (st.sermon ? '<div class="isermon">Sermon: <b>' + esc(st.sermon) + '</b></div>' : '') +
       '<div class="idesc">' + (ST.stream.description ? esc(ST.stream.description) : 'No description') + '</div>' +
-      '<div class="prev">YouTube: <b>' + esc((PRIVACY.find(function (p) { return p[0] === st.privacy; }) || [0, 'Public'])[1]) + '</b>' + (st.category ? ' · <b>' + esc(catName(st.category)) + '</b>' : '') +
-      ' · Used by ' + (uses.length ? esc(uses.join(', ')) + ' and the web player' : 'the web player') + (own.length ? ' · Own title: ' + esc(own.join(', ')) : '') + '</div>' +
+      '<div class="prev">' + (yt ? 'YouTube: <b>' + esc((PRIVACY.find(function (p) { return p[0] === st.privacy; }) || [0, 'Public'])[1]) + '</b>' + (st.category ? ' · <b>' + esc(catName(st.category)) + '</b>' : '') + ' · ' : '') +
+      'Used by ' + (uses.length ? esc(uses.join(', ')) + ' and the web player' : 'the web player') + (own.length ? ' · Own title: ' + esc(own.join(', ')) : '') + '</div>' +
       (keyed ? '<div class="prev">Destinations using a stream key keep the title set on YouTube or Facebook. Switch them to <b>Account</b> to set it from here.</div>' : '') + '</div>' +
       '<div class="ipre">' + (st.presets.length ? '<select id="iPreset" title="Load a preset"><option value="">Load preset…</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') + '</select>' : '') +
       '<button class="on" id="iEdit">Edit</button></div></div>' +
@@ -632,18 +641,25 @@
 
   function editInfo() {
     var st = S.settings.stream, live = ST.stream.broadcasts;
+    var yt = hasType('youtube'), fb = hasType('facebook');
+    var platformNote = yt && fb ? 'YouTube and Facebook use the title and description; privacy and category are YouTube only.'
+      : yt ? 'YouTube uses the title, description, privacy and category.'
+      : fb ? 'Facebook uses the title and description.'
+      : 'The web player shows the title and sermon. Add YouTube or Facebook as a destination to send the title there too.';
     var html = '<div class="mh">Stream info</div><div class="mb" id="iEd">' +
-      '<div class="note" style="margin-bottom:10px">One title and description for YouTube, Facebook and the web player. A destination can still use its own (Edit on its card).</div>' +
+      '<div class="note" style="margin-bottom:10px">One title for the web player' + (yt && fb ? ', YouTube and Facebook' : yt ? ' and YouTube' : fb ? ' and Facebook' : '') + '.' + (yt || fb ? ' A destination can still use its own (Edit on its card).' : '') + '</div>' +
       '<div class="msec">Preset</div><div class="prow"><select id="ePreset"><option value="">None</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '"' + (p.id === st.presetId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>' +
       '<button id="ePSave">Save as preset…</button><button id="ePUpd" class="hide">Update preset</button><button id="ePDel" class="danger hide">Delete</button></div>' +
       '<div class="prow hide" id="ePNew" style="margin-top:6px"><input id="ePName" placeholder="Preset name, e.g. Sunday Service" maxlength="40" style="flex:1"><button class="on" id="ePNewOk">Save preset</button><button id="ePNewNo">Cancel</button></div>' +
       '<div class="msec">Details</div><div class="fgrid">' +
+      '<label class="fld wide"><span>Sermon</span><input data-s="sermon" maxlength="120" value="' + esc(st.sermon || '') + '" placeholder="e.g. Walking by Faith"></label>' +
+      '<div class="fld wide note" style="margin-top:-4px">Shown under the title in the web player. Not saved in presets, so it can change every week.</div>' +
       '<label class="fld wide"><span>Title</span><input data-i="title" maxlength="100" value="' + esc(st.title) + '"></label>' +
-      '<div class="fld wide"><div class="prev">Insert: <button type="button" class="tok" data-tok="{weekday}">{weekday}</button> <button type="button" class="tok" data-tok="{date}">{date}</button> <button type="button" class="tok" data-tok="{time}">{time}</button></div><div class="prev" id="ePrev"></div></div>' +
+      '<div class="fld wide"><div class="prev">Insert: <button type="button" class="tok" data-tok="{weekday}">{weekday}</button> <button type="button" class="tok" data-tok="{date}">{date}</button> <button type="button" class="tok" data-tok="{time}">{time}</button> <button type="button" class="tok" data-tok="{sermon}">{sermon}</button></div><div class="prev" id="ePrev"></div></div>' +
       '<label class="fld wide"><span>Description</span><textarea data-i="description" rows="5" maxlength="5000">' + esc(st.description) + '</textarea></label>' +
-      '<label class="fld"><span>YouTube privacy</span><select data-i="privacy">' + opts(PRIVACY, st.privacy) + '</select></label>' +
-      '<label class="fld"><span>YouTube category</span><select data-i="category">' + opts(S.categories || [], st.category) + '</select></label>' +
-      '</div><div class="note" style="margin-top:8px">Facebook uses the title and description; privacy and category are YouTube only.</div>' +
+      '<label class="fld' + (yt ? '' : ' hide') + '"><span>YouTube privacy</span><select data-i="privacy">' + opts(PRIVACY, st.privacy) + '</select></label>' +
+      '<label class="fld' + (yt ? '' : ' hide') + '"><span>YouTube category</span><select data-i="category">' + opts(S.categories || [], st.category) + '</select></label>' +
+      '</div><div class="note" style="margin-top:8px">' + platformNote + '</div>' +
       '<div class="formerr hide" id="iErr"></div></div>' +
       '<div class="mf"><span class="sp"></span><button id="mNo">Cancel</button><button class="on" id="iSave">' + (live ? 'Save and update ' + live + ' live broadcast' + (live > 1 ? 's' : '') : 'Save') + '</button></div>';
     modal(html, true);
@@ -654,12 +670,12 @@
     var err = function (m) { $('#iErr').textContent = m; $('#iErr').classList.toggle('hide', !m); };
     var paint = function () {
       var v = val(), p = chosen();
-      $('#ePrev').innerHTML = 'Today this reads: <b>' + (esc(fmtPreview(v.title)) || '—') + '</b>';
+      $('#ePrev').innerHTML = 'Today this reads: <b>' + (esc(fmtPreview(v.title).replace(/\{sermon\}/g, $('[data-s=sermon]', root).value.trim())) || '—') + '</b>';
       $('#ePUpd').classList.toggle('hide', !p || samePreset(p, v));
       $('#ePDel').classList.toggle('hide', !p);
     };
     var fill = function (p) { INFO_KEYS.forEach(function (k) { $('[data-i=' + k + ']', root).value = p[k] || (k === 'privacy' ? 'public' : ''); }); paint(); };
-    $$('[data-i]', root).forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
+    $$('[data-i], [data-s]', root).forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
     $$('[data-tok]', root).forEach(function (b) {
       b.onclick = function () {
         var t = $('[data-i=title]', root), a = t.selectionStart != null ? t.selectionStart : t.value.length, z = t.selectionEnd != null ? t.selectionEnd : a;
@@ -699,6 +715,7 @@
     $('#iSave').onclick = function () {
       var v = val(), p = chosen();
       v.presetId = p && samePreset(p, v) ? p.id : '';
+      v.sermon = $('[data-s=sermon]', root).value;
       $('#iSave').disabled = true;
       call('POST', 'api/stream', v).then(function (r) {
         $('#iSave').disabled = false;
@@ -835,8 +852,10 @@
   paintHistWin();
   function drawHistory() {
     var c = $('#histCan'); if (!c || tab !== 'main') return;
-    var W = c.clientWidth * 2, H = c.height;
+    var W = c.clientWidth * 2, H = c.clientHeight * 2;
+    if (!W || !H) return;
     if (c.width !== W) c.width = W;
+    if (c.height !== H) c.height = H;
     var g = c.getContext('2d'), cs = getComputedStyle(document.documentElement), col = function (v) { return cs.getPropertyValue(v).trim(); };
     g.clearRect(0, 0, W, H);
     var L = 64, R = W - 12, T = 12, B = H - 34, lo = -50, hi = 0;
@@ -882,6 +901,7 @@
     if (!histLoaded || !HIST.size) { g.fillStyle = col('--dim'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '22px system-ui'; g.fillText(histLoaded ? 'No audio yet' : 'Loading…', (L + R) / 2, (T + B) / 2); }
   }
   setInterval(drawHistory, 1000);
+  if (window.ResizeObserver) new ResizeObserver(function () { drawHistory(); }).observe($('#histCan').parentNode);
   window.addEventListener('resize', drawHistory);
 
   // destination card
@@ -1220,7 +1240,7 @@
     var w = S.settings.web, url = webUrl();
     return '<div class="note pnote">The web player shows the stream on any browser. On the church network it uses WebRTC (under a second behind). From the internet it uses HLS (a few seconds behind) and needs the player port reachable, for example through a reverse proxy or a Cloudflare Tunnel to port ' + S.ports.public + '.</div>' +
       card('Player', set('Web player', 'Runs while the input is connected', segH('enabled', [['true', 'On'], ['false', 'Off']], String(w.enabled)), 'first') +
-        set('Title', 'Comes from Stream info on the main page', '<span class="note">' + esc(ST.stream.title) + '</span>') +
+        set('Title and sermon', 'Come from Stream info on the main page', '<span class="note">' + esc(ST.stream.title) + (S.settings.stream.sermon ? ' · ' + esc(S.settings.stream.sermon) : '') + '</span>') +
         set('Waiting message', 'Shown before the stream starts', inp('offlineText', w.offlineText, 'wide')), 'web') +
       card('Quality', set('Video', '', segH('mode', [['encode', 'Encode'], ['original', 'Original']], w.mode)) +
         '<div id="wEnc" class="' + (w.mode === 'original' ? 'hide' : '') + '">' +

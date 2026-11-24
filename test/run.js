@@ -327,6 +327,27 @@ test('app: one Stream info for everything, presets, Companion', async () => {
     assert.strictEqual(r.j.settings.destinations[0].useShared, false);
   } finally { p.kill(); }
 });
+test('app: sermon in the web player, {sermon} in titles, not in presets', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1) }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 1500));
+    let r = await req(port, 'POST', '/api/stream', { title: 'Sunday Service - {sermon}', sermon: 'Walking by Faith' });
+    assert.ok(r.j.ok);
+    r = await req(port + 1, 'GET', '/player.json');
+    assert.deepStrictEqual([r.j.title, r.j.sermon], ['Sunday Service - Walking by Faith', 'Walking by Faith']);
+    r = await req(port, 'POST', '/api/stream', { sermon: '' });
+    r = await req(port + 1, 'GET', '/player.json');
+    assert.strictEqual(r.j.title, 'Sunday Service', 'a dangling separator is dropped when there is no sermon');
+    r = await req(port, 'POST', '/api/stream', { sermon: 'Grace Upon Grace' });
+    r = await req(port, 'POST', '/api/stream/presets', { name: 'Sunday', info: { title: 'Sunday - {sermon}', sermon: 'ignored' } });
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.stream.presets[0].sermon, undefined, 'presets keep no sermon');
+    r = await req(port, 'POST', '/api/v1/stream/preset/Sunday');
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.deepStrictEqual([r.j.stream_title, r.j.stream_sermon], ['Sunday - Grace Upon Grace', 'Grace Upon Grace'], 'loading a preset keeps the sermon');
+  } finally { p.kill(); }
+});
 test('app: titles from 0.1.x move into Stream info', async () => {
   const port = 20000 + Math.floor(Math.random() * 20000), data = tmp('mig');
   fs.writeFileSync(path.join(data, 'config.json'), JSON.stringify({ destinations: [

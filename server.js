@@ -59,7 +59,7 @@ const DEFAULTS = {
   ports: Object.assign({}, MediaMTX.DEFAULT_PORTS),
   network: { publicHosts: '', publicUrl: '' },
   // what the stream is called, shared by every destination (one can use its own instead)
-  stream: { title: '{weekday} Service - {date}', description: '', privacy: 'public', category: '', presets: [], presetId: '' },
+  stream: { title: '{weekday} Service - {date}', sermon: '', description: '', privacy: 'public', category: '', presets: [], presetId: '' },
   destinations: [],
   web: { enabled: true, mode: 'encode', height: 720, fps: 0, bitrate: 0, preset: 'veryfast', audioBitrate: 160, title: 'Live', offlineText: 'The stream will start soon.' },
   ndi: { discoveryServer: '', extraIps: '', groups: '' },
@@ -156,7 +156,8 @@ function formatTitle(t) {
   const date = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
-  return String(t || '').replace(/\{date\}/g, date).replace(/\{time\}/g, time).replace(/\{weekday\}/g, weekday);
+  return String(t || '').replace(/\{date\}/g, date).replace(/\{time\}/g, time).replace(/\{weekday\}/g, weekday)
+    .replace(/\{sermon\}/g, (cfg.stream && cfg.stream.sermon) || '').replace(/\s+([-–—|·:])\s*$/, '').trim();
 }
 
 function lanAddresses() {
@@ -703,15 +704,19 @@ function findPreset(ref) {
 async function setStreamInfo(v, presetId) {
   const next = normInfo(v, cfg.stream);
   if (!next.title) return { ok: false, error: 'The title can\'t be empty' };
+  const sermon = v && v.sermon !== undefined ? str(v.sermon, 120) : cfg.stream.sermon || '';
+  const sermonChanged = sermon !== (cfg.stream.sermon || '');
   const changed = ['title', 'description', 'privacy', 'category'].some((k) => next[k] !== cfg.stream[k]);
-  Object.assign(cfg.stream, next);
+  Object.assign(cfg.stream, next, { sermon });
   if (presetId !== undefined) cfg.stream.presetId = presetId;
   else if (changed) {
     const p = cfg.stream.presets.find((x) => x.id === cfg.stream.presetId);
     if (p && ['title', 'description', 'privacy', 'category'].some((k) => p[k] !== next[k])) cfg.stream.presetId = '';
   }
   saveCfg(); pushState();
-  if (!changed) return { ok: true, updated: [] };
+  // a new sermon only matters to YouTube/Facebook when the title or description uses {sermon}
+  const usesSermon = /\{sermon\}/.test(cfg.stream.title + cfg.stream.description);
+  if (!changed && !(sermonChanged && usesSermon)) return { ok: true, updated: [] };
   const res = await pushInfo(true);
   const bad = res.filter((x) => !x.ok);
   return bad.length ? { ok: false, error: bad.map((x) => x.name + ': ' + x.error).join(' · '), updated: res } : { ok: true, updated: res.map((x) => x.name) };
@@ -820,6 +825,7 @@ function compactStatus() {
     any_live: live > 0,
     stream_title: infoFor({}).title,
     stream_preset: (cfg.stream.presets.find((p) => p.id === cfg.stream.presetId) || {}).name || '',
+    stream_sermon: cfg.stream.sermon || '',
     cpu: s.cpu.total,
     destinations: {}
   };
@@ -886,7 +892,7 @@ function playerRoutes(req, res, u, isPublic) {
   const p = u.pathname;
   if (req.method === 'GET' && ((isPublic && p === '/') || p === '/watch' || p === '/embed')) return serveFile(res, path.join(__dirname, 'public', 'watch.html'), p === '/embed' ? {} : { 'x-frame-options': 'SAMEORIGIN' }), true;
   if (req.method === 'GET' && p === '/player.json') {
-    send(res, 200, { title: infoFor({}).title, offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
+    send(res, 200, { title: infoFor({}).title, sermon: cfg.stream.sermon || '', offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
     return true;
   }
   if (req.method === 'GET' && p.startsWith('/vendor/') && /^\/vendor\/[\w.-]+\.js$/.test(p)) return serveFile(res, path.join(__dirname, 'public', p)), true;
