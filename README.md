@@ -62,9 +62,9 @@ Send what your best destination needs at a generous bitrate, and let BroadcastRe
 
 ## Stream info
 
-One place for what the stream is called: **title, sermon, description**, plus **YouTube privacy and category** when you have a YouTube destination. Shared by the web player and every YouTube and Facebook destination connected by account. The title can use `{weekday}`, `{date}`, `{time}` and `{sermon}`.
+One place for what the stream is called: **title, sermon, description**, plus **YouTube privacy and category** when you have a YouTube destination. Shared by the web player and every YouTube and Facebook destination connected by account. The title can use `{weekday}`, `{date}`, `{time}`, `{sermon}` and `{speaker}`; if the sermon or speaker is empty, the leftover dash or "with" is dropped ("Sunday - {sermon} - {speaker}" with no sermon reads "Sunday - Pastor John").
 
-- **Sermon**: shown under the title in the web player (and on its waiting screen). It isn't saved in presets, so it can change every week while the preset stays the same.
+- **Sermon and speaker**: shown under the title in the web player (and on its waiting screen) as "Sermon · Speaker". They aren't saved in presets, so they can change every week while the preset stays the same. Speakers you've used are remembered and offered as a pick list.
 
 - **Presets**: save the details as e.g. *Sunday Service*, *Wednesday Night*, *Funeral*, and load one from the card's *Load preset* menu (or from Companion).
 - **While live**: saving, or loading a preset, updates the title and description of the running YouTube and Facebook broadcasts right away.

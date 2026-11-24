@@ -346,6 +346,26 @@ test('app: sermon in the web player, {sermon} in titles, not in presets', async 
     r = await req(port, 'POST', '/api/v1/stream/preset/Sunday');
     r = await req(port, 'GET', '/api/v1/status');
     assert.deepStrictEqual([r.j.stream_title, r.j.stream_sermon], ['Sunday - Grace Upon Grace', 'Grace Upon Grace'], 'loading a preset keeps the sermon');
+    // speaker
+    r = await req(port, 'POST', '/api/stream', { title: '{sermon} - {speaker}', sermon: 'Grace Upon Grace', speaker: 'Pastor John' });
+    r = await req(port + 1, 'GET', '/player.json');
+    assert.deepStrictEqual([r.j.title, r.j.speaker], ['Grace Upon Grace - Pastor John', 'Pastor John']);
+    const titleWith = async (title, sermon, speaker) => {
+      await req(port, 'POST', '/api/stream', { title, sermon, speaker });
+      return (await req(port + 1, 'GET', '/player.json')).j.title;
+    };
+    assert.strictEqual(await titleWith('Sunday - {sermon} - {speaker}', '', 'Pastor John'), 'Sunday - Pastor John');
+    assert.strictEqual(await titleWith('{sermon} with {speaker}', 'Grace', ''), 'Grace');
+    assert.strictEqual(await titleWith('{speaker} | {sermon}', 'Grace', ''), 'Grace');
+    assert.strictEqual(await titleWith('Stand by Me - {speaker}', '', 'Guest'), 'Stand by Me - Guest');
+    await req(port, 'POST', '/api/stream', { speaker: 'Guest Speaker' });
+    r = await req(port, 'GET', '/api/state');
+    assert.deepStrictEqual(r.j.settings.stream.speakers.slice(0, 3), ['Guest Speaker', 'Guest', 'Pastor John'], 'recent speakers, newest first');
+    await req(port, 'POST', '/api/stream/speakers/forget', { name: 'guest' });
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.strictEqual(r.j.stream_speaker, 'Guest Speaker');
+    r = await req(port, 'GET', '/api/state');
+    assert.ok(!r.j.settings.stream.speakers.includes('Guest'));
   } finally { p.kill(); }
 });
 test('app: titles from 0.1.x move into Stream info', async () => {

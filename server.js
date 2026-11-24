@@ -59,7 +59,7 @@ const DEFAULTS = {
   ports: Object.assign({}, MediaMTX.DEFAULT_PORTS),
   network: { publicHosts: '', publicUrl: '' },
   // what the stream is called, shared by every destination (one can use its own instead)
-  stream: { title: '{weekday} Service - {date}', sermon: '', description: '', privacy: 'public', category: '', presets: [], presetId: '' },
+  stream: { title: '{weekday} Service - {date}', sermon: '', speaker: '', speakers: [], description: '', privacy: 'public', category: '', presets: [], presetId: '' },
   destinations: [],
   web: { enabled: true, mode: 'encode', height: 720, fps: 0, bitrate: 0, preset: 'veryfast', audioBitrate: 160, title: 'Live', offlineText: 'The stream will start soon.' },
   ndi: { discoveryServer: '', extraIps: '', groups: '' },
@@ -103,6 +103,7 @@ let cfg = clone(DEFAULTS);
     }
   }
   if (!Array.isArray(cfg.stream.presets)) cfg.stream.presets = [];
+  if (!Array.isArray(cfg.stream.speakers)) cfg.stream.speakers = [];
   // 0.3.0: the fixed NDI output became a destination type
   if (saved.ndiOut && (saved.ndiOut.enabled || (saved.ndiOut.name && saved.ndiOut.name !== 'Program')) && !cfg.destinations.some((d) => d.type === 'ndi')) {
     cfg.destinations.push({ id: crypto.randomBytes(4).toString('hex'), name: String(saved.ndiOut.name || 'Program').replace(/[()]/g, '') || 'Program', type: 'ndi', armed: true, connect: 'key', url: '', key: '', useShared: true, title: '', description: '', privacy: 'public',
@@ -157,7 +158,11 @@ function formatTitle(t) {
   const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   return String(t || '').replace(/\{date\}/g, date).replace(/\{time\}/g, time).replace(/\{weekday\}/g, weekday)
-    .replace(/\{sermon\}/g, (cfg.stream && cfg.stream.sermon) || '').replace(/\s+([-–—|·:])\s*$/, '').trim();
+    .replace(/\{sermon\}/g, (cfg.stream && cfg.stream.sermon) || '').replace(/\{speaker\}/g, (cfg.stream && cfg.stream.speaker) || '')
+    // tidy what an empty {sermon} or {speaker} leaves behind: "A -  - B", "A -", "- B", "A with"
+    .replace(/\s+(with|by|featuring|feat\.)\s*$/i, ' ')
+    .replace(/(\s*[-–—|·:]\s*)(?:[-–—|·:]\s*)+/g, '$1')
+    .replace(/^\s*[-–—|·:]\s*/, '').replace(/\s*[-–—|·:]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 function lanAddresses() {
@@ -705,17 +710,20 @@ async function setStreamInfo(v, presetId) {
   const next = normInfo(v, cfg.stream);
   if (!next.title) return { ok: false, error: 'The title can\'t be empty' };
   const sermon = v && v.sermon !== undefined ? str(v.sermon, 120) : cfg.stream.sermon || '';
-  const sermonChanged = sermon !== (cfg.stream.sermon || '');
+  const speaker = v && v.speaker !== undefined ? str(v.speaker, 80) : cfg.stream.speaker || '';
+  const sermonChanged = sermon !== (cfg.stream.sermon || '') || speaker !== (cfg.stream.speaker || '');
+  // remember the speakers used, newest first, for the pick list
+  if (speaker) cfg.stream.speakers = [speaker].concat((cfg.stream.speakers || []).filter((x) => x.toLowerCase() !== speaker.toLowerCase())).slice(0, 25);
   const changed = ['title', 'description', 'privacy', 'category'].some((k) => next[k] !== cfg.stream[k]);
-  Object.assign(cfg.stream, next, { sermon });
+  Object.assign(cfg.stream, next, { sermon, speaker });
   if (presetId !== undefined) cfg.stream.presetId = presetId;
   else if (changed) {
     const p = cfg.stream.presets.find((x) => x.id === cfg.stream.presetId);
     if (p && ['title', 'description', 'privacy', 'category'].some((k) => p[k] !== next[k])) cfg.stream.presetId = '';
   }
   saveCfg(); pushState();
-  // a new sermon only matters to YouTube/Facebook when the title or description uses {sermon}
-  const usesSermon = /\{sermon\}/.test(cfg.stream.title + cfg.stream.description);
+  // a new sermon or speaker only matters to YouTube/Facebook when the title or description uses it
+  const usesSermon = /\{(sermon|speaker)\}/.test(cfg.stream.title + cfg.stream.description);
   if (!changed && !(sermonChanged && usesSermon)) return { ok: true, updated: [] };
   const res = await pushInfo(true);
   const bad = res.filter((x) => !x.ok);
@@ -826,6 +834,7 @@ function compactStatus() {
     stream_title: infoFor({}).title,
     stream_preset: (cfg.stream.presets.find((p) => p.id === cfg.stream.presetId) || {}).name || '',
     stream_sermon: cfg.stream.sermon || '',
+    stream_speaker: cfg.stream.speaker || '',
     cpu: s.cpu.total,
     destinations: {}
   };
@@ -892,7 +901,7 @@ function playerRoutes(req, res, u, isPublic) {
   const p = u.pathname;
   if (req.method === 'GET' && ((isPublic && p === '/') || p === '/watch' || p === '/embed')) return serveFile(res, path.join(__dirname, 'public', 'watch.html'), p === '/embed' ? {} : { 'x-frame-options': 'SAMEORIGIN' }), true;
   if (req.method === 'GET' && p === '/player.json') {
-    send(res, 200, { title: infoFor({}).title, sermon: cfg.stream.sermon || '', offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
+    send(res, 200, { title: infoFor({}).title, sermon: cfg.stream.sermon || '', speaker: cfg.stream.speaker || '', offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
     return true;
   }
   if (req.method === 'GET' && p.startsWith('/vendor/') && /^\/vendor\/[\w.-]+\.js$/.test(p)) return serveFile(res, path.join(__dirname, 'public', p)), true;
@@ -1032,6 +1041,12 @@ async function controlHandler(req, res) {
       const b = await readBody(req);
       const r = await setStreamInfo(b, b.presetId !== undefined ? (findPreset(b.presetId) ? b.presetId : '') : undefined);
       return send(res, r.ok ? 200 : 400, r);
+    }
+    if (p === '/api/stream/speakers/forget' && req.method === 'POST') {
+      const b = await readBody(req), n = String(b.name || '').toLowerCase();
+      cfg.stream.speakers = (cfg.stream.speakers || []).filter((x) => x.toLowerCase() !== n);
+      saveCfg(); pushState();
+      return send(res, 200, { ok: true });
     }
     if (p === '/api/stream/presets' && req.method === 'POST') {
       const r = savePreset(await readBody(req));

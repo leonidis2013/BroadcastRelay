@@ -106,13 +106,16 @@
   function poll() {
     fetch(base() + '/player.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       info = j;
-      document.title = (j.title || 'Live') + (j.sermon ? ' · ' + j.sermon : '');
+      // sermon · speaker, leaving out whatever the title already says
+      var tl = String(j.title || '').toLowerCase();
+      var byline = [j.sermon, j.speaker].filter(function (x) { return x && tl.indexOf(String(x).toLowerCase()) < 0; }).join(' · ');
+      document.title = (j.title || 'Live') + (byline ? ' · ' + byline : '');
       document.getElementById('title').textContent = j.title || '';
       document.getElementById('offTitle').textContent = j.title || 'Live';
-      document.getElementById('offSermon').textContent = j.sermon || '';
+      document.getElementById('offSermon').textContent = byline;
       document.getElementById('infoTitle').textContent = j.title || 'Live';
-      document.getElementById('infoSermon').textContent = j.sermon || '';
-      document.getElementById('sermonBar').textContent = j.sermon || '';
+      document.getElementById('infoSermon').textContent = byline;
+      document.getElementById('sermonBar').textContent = byline;
       document.getElementById('offText').textContent = j.offlineText || '';
       if (!j.live && !j.webrtc) { if (mode) stopAll(); showOff(true); return; }
       if (mode) return; // already playing or trying

@@ -597,6 +597,12 @@
       .replace(/\{weekday\}/g, now.toLocaleDateString('en-US', { weekday: 'long' }))
       .replace(/\{time\}/g, now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
   }
+  // same clean-up the server does when {sermon} or {speaker} is empty
+  function tidyTitle(t) {
+    return String(t).replace(/\s+(with|by|featuring|feat\.)\s*$/i, ' ')
+      .replace(/(\s*[-–—|·:]\s*)(?:[-–—|·:]\s*)+/g, '$1')
+      .replace(/^\s*[-–—|·:]\s*/, '').replace(/\s*[-–—|·:]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+  }
   function samePreset(p, v) { return INFO_KEYS.every(function (k) { return (p[k] || '') === (v[k] || ''); }); }
   function hasType(t) { return S.settings.destinations.some(function (d) { return d.type === t; }); }
   function renderInfo() {
@@ -612,7 +618,7 @@
       (preset ? '<span class="chip a">' + esc(preset.name) + '</span>' : '') +
       (ST.stream.broadcasts ? '<span class="chip l">On air · edits update ' + ST.stream.broadcasts + ' broadcast' + (ST.stream.broadcasts > 1 ? 's' : '') + '</span>' : '') + '</div></div>' +
       '<div class="irow"><div><div class="ititle">' + esc(ST.stream.title) + '</div>' +
-      (st.sermon ? '<div class="isermon">Sermon: <b>' + esc(st.sermon) + '</b></div>' : '') +
+      (st.sermon || st.speaker ? '<div class="isermon">' + (st.sermon ? 'Sermon: <b>' + esc(st.sermon) + '</b>' : '') + (st.sermon && st.speaker ? ' · ' : '') + (st.speaker ? 'Speaker: <b>' + esc(st.speaker) + '</b>' : '') + '</div>' : '') +
       '<div class="idesc">' + (ST.stream.description ? esc(ST.stream.description) : 'No description') + '</div>' +
       '<div class="prev">' + (yt ? 'YouTube: <b>' + esc((PRIVACY.find(function (p) { return p[0] === st.privacy; }) || [0, 'Public'])[1]) + '</b>' + (st.category ? ' · <b>' + esc(catName(st.category)) + '</b>' : '') + ' · ' : '') +
       'Used by ' + (uses.length ? esc(uses.join(', ')) + ' and the web player' : 'the web player') + (own.length ? ' · Own title: ' + esc(own.join(', ')) : '') + '</div>' +
@@ -645,7 +651,7 @@
     var platformNote = yt && fb ? 'YouTube and Facebook use the title and description; privacy and category are YouTube only.'
       : yt ? 'YouTube uses the title, description, privacy and category.'
       : fb ? 'Facebook uses the title and description.'
-      : 'The web player shows the title and sermon. Add YouTube or Facebook as a destination to send the title there too.';
+      : 'The web player shows the title, sermon and speaker. Add YouTube or Facebook as a destination to send the title there too.';
     var html = '<div class="mh">Stream info</div><div class="mb" id="iEd">' +
       '<div class="note" style="margin-bottom:10px">One title for the web player' + (yt && fb ? ', YouTube and Facebook' : yt ? ' and YouTube' : fb ? ' and Facebook' : '') + '.' + (yt || fb ? ' A destination can still use its own (Edit on its card).' : '') + '</div>' +
       '<div class="msec">Preset</div><div class="prow"><select id="ePreset"><option value="">None</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '"' + (p.id === st.presetId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>' +
@@ -653,9 +659,12 @@
       '<div class="prow hide" id="ePNew" style="margin-top:6px"><input id="ePName" placeholder="Preset name, e.g. Sunday Service" maxlength="40" style="flex:1"><button class="on" id="ePNewOk">Save preset</button><button id="ePNewNo">Cancel</button></div>' +
       '<div class="msec">Details</div><div class="fgrid">' +
       '<label class="fld wide"><span>Sermon</span><input data-s="sermon" maxlength="120" value="' + esc(st.sermon || '') + '" placeholder="e.g. Walking by Faith"></label>' +
-      '<div class="fld wide note" style="margin-top:-4px">Shown under the title in the web player. Not saved in presets, so it can change every week.</div>' +
+      '<label class="fld wide"><span>Speaker</span><div class="prow"><input data-s="speaker" maxlength="80" list="spkList" value="' + esc(st.speaker || '') + '" placeholder="e.g. Pastor John Smith" style="flex:1" autocomplete="off"><button type="button" id="spkClear" title="No speaker">Clear</button></div>' +
+        '<datalist id="spkList">' + (st.speakers || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist></label>' +
+      ((st.speakers || []).length ? '<div class="fld wide"><div class="prev">Recent: ' + st.speakers.slice(0, 8).map(function (n) { return '<button type="button" class="tok" data-spk="' + esc(n) + '">' + esc(n) + '</button>'; }).join(' ') + '</div></div>' : '') +
+      '<div class="fld wide note" style="margin-top:-4px">Sermon and speaker are shown under the title in the web player. They aren\'t saved in presets, so they can change every week.</div>' +
       '<label class="fld wide"><span>Title</span><input data-i="title" maxlength="100" value="' + esc(st.title) + '"></label>' +
-      '<div class="fld wide"><div class="prev">Insert: <button type="button" class="tok" data-tok="{weekday}">{weekday}</button> <button type="button" class="tok" data-tok="{date}">{date}</button> <button type="button" class="tok" data-tok="{time}">{time}</button> <button type="button" class="tok" data-tok="{sermon}">{sermon}</button></div><div class="prev" id="ePrev"></div></div>' +
+      '<div class="fld wide"><div class="prev">Insert: <button type="button" class="tok" data-tok="{weekday}">{weekday}</button> <button type="button" class="tok" data-tok="{date}">{date}</button> <button type="button" class="tok" data-tok="{time}">{time}</button> <button type="button" class="tok" data-tok="{sermon}">{sermon}</button> <button type="button" class="tok" data-tok="{speaker}">{speaker}</button></div><div class="prev" id="ePrev"></div></div>' +
       '<label class="fld wide"><span>Description</span><textarea data-i="description" rows="5" maxlength="5000">' + esc(st.description) + '</textarea></label>' +
       '<label class="fld' + (yt ? '' : ' hide') + '"><span>YouTube privacy</span><select data-i="privacy">' + opts(PRIVACY, st.privacy) + '</select></label>' +
       '<label class="fld' + (yt ? '' : ' hide') + '"><span>YouTube category</span><select data-i="category">' + opts(S.categories || [], st.category) + '</select></label>' +
@@ -670,18 +679,33 @@
     var err = function (m) { $('#iErr').textContent = m; $('#iErr').classList.toggle('hide', !m); };
     var paint = function () {
       var v = val(), p = chosen();
-      $('#ePrev').innerHTML = 'Today this reads: <b>' + (esc(fmtPreview(v.title).replace(/\{sermon\}/g, $('[data-s=sermon]', root).value.trim())) || '—') + '</b>';
+      $('#ePrev').innerHTML = 'Today this reads: <b>' + (esc(tidyTitle(fmtPreview(v.title).replace(/\{sermon\}/g, $('[data-s=sermon]', root).value.trim()).replace(/\{speaker\}/g, $('[data-s=speaker]', root).value.trim()))) || '—') + '</b>';
       $('#ePUpd').classList.toggle('hide', !p || samePreset(p, v));
       $('#ePDel').classList.toggle('hide', !p);
     };
     var fill = function (p) { INFO_KEYS.forEach(function (k) { $('[data-i=' + k + ']', root).value = p[k] || (k === 'privacy' ? 'public' : ''); }); paint(); };
     $$('[data-i], [data-s]', root).forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
+    // where the cursor was in the Title box (null until it has been clicked or typed in)
+    var titleCaret = null, tIn = $('[data-i=title]', root);
+    ['keyup', 'mouseup', 'input', 'select'].forEach(function (ev) { tIn.addEventListener(ev, function () { titleCaret = [tIn.selectionStart, tIn.selectionEnd]; }); });
     $$('[data-tok]', root).forEach(function (b) {
       b.onclick = function () {
-        var t = $('[data-i=title]', root), a = t.selectionStart != null ? t.selectionStart : t.value.length, z = t.selectionEnd != null ? t.selectionEnd : a;
-        t.value = t.value.slice(0, a) + b.dataset.tok + t.value.slice(z); t.focus(); t.selectionStart = t.selectionEnd = a + b.dataset.tok.length; paint();
+        var t = $('[data-i=title]', root), tok = b.dataset.tok;
+        if (titleCaret == null) {
+          // nowhere chosen yet: add to the end, with a dash between it and what's there
+          var v = t.value.replace(/\s+$/, '');
+          t.value = v + (v && !/[-–—|·:(]$/.test(v) ? ' - ' : v ? ' ' : '') + tok;
+          titleCaret = t.value.length;
+        } else {
+          var a = titleCaret[0], z = titleCaret[1];
+          t.value = t.value.slice(0, a) + tok + t.value.slice(z);
+          titleCaret = [a + tok.length, a + tok.length];
+        }
+        t.focus(); var at = Array.isArray(titleCaret) ? titleCaret[0] : titleCaret; t.selectionStart = t.selectionEnd = at; paint();
       };
     });
+    $$('[data-spk]', root).forEach(function (b) { b.onclick = function () { $('[data-s=speaker]', root).value = b.dataset.spk; paint(); }; });
+    $('#spkClear').onclick = function () { $('[data-s=speaker]', root).value = ''; paint(); };
     $('#ePreset').onchange = function () { var p = chosen(); if (p) fill(p); else paint(); };
     $('#ePSave').onclick = function () { $('#ePNew').classList.remove('hide'); $('#ePName').focus(); };
     $('#ePNewNo').onclick = function () { $('#ePNew').classList.add('hide'); };
@@ -716,6 +740,7 @@
       var v = val(), p = chosen();
       v.presetId = p && samePreset(p, v) ? p.id : '';
       v.sermon = $('[data-s=sermon]', root).value;
+      v.speaker = $('[data-s=speaker]', root).value;
       $('#iSave').disabled = true;
       call('POST', 'api/stream', v).then(function (r) {
         $('#iSave').disabled = false;
@@ -1240,7 +1265,7 @@
     var w = S.settings.web, url = webUrl();
     return '<div class="note pnote">The web player shows the stream on any browser. On the church network it uses WebRTC (under a second behind). From the internet it uses HLS (a few seconds behind) and needs the player port reachable, for example through a reverse proxy or a Cloudflare Tunnel to port ' + S.ports.public + '.</div>' +
       card('Player', set('Web player', 'Runs while the input is connected', segH('enabled', [['true', 'On'], ['false', 'Off']], String(w.enabled)), 'first') +
-        set('Title and sermon', 'Come from Stream info on the main page', '<span class="note">' + esc(ST.stream.title) + (S.settings.stream.sermon ? ' · ' + esc(S.settings.stream.sermon) : '') + '</span>') +
+        set('Title, sermon and speaker', 'Come from Stream info on the main page', '<span class="note">' + esc([ST.stream.title, S.settings.stream.sermon, S.settings.stream.speaker].filter(Boolean).join(' · ')) + '</span>') +
         set('Waiting message', 'Shown before the stream starts', inp('offlineText', w.offlineText, 'wide')), 'web') +
       card('Quality', set('Video', '', segH('mode', [['encode', 'Encode'], ['original', 'Original']], w.mode)) +
         '<div id="wEnc" class="' + (w.mode === 'original' ? 'hide' : '') + '">' +
