@@ -64,6 +64,7 @@ jobs:
             set -ex
             ls -la /usr/local/bin /usr/local/lib
             mediamtx --version
+            ss -V
             ffmpeg -hide_banner -encoders | grep -E "libx264|libopus"
             ffmpeg -hide_banner -protocols | grep -w srt
             setpriv --reuid=1000 --regid=1000 --clear-groups node -e "const fs=require(\"fs\");console.log(\"bridge visible to the app:\", fs.existsSync(process.env.NDI_BRIDGE), process.env.NDI_BRIDGE)"

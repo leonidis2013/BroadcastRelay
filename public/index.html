@@ -268,6 +268,57 @@
   .vsum span { color:var(--dim); } .vsum b { color:var(--fg); }
   @media (max-width:720px) { table.vw .hm { display:none; } }
 
+  /* stream info form */
+  #infoCard .sititle { font-size:20px; font-weight:700; line-height:1.25; overflow-wrap:anywhere; margin:2px 0 2px; }
+  #infoCard .sigrid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px 14px; margin-top:12px; }
+  #infoCard .sigrid .wide { grid-column:1/-1; }
+  #infoCard .df { margin-top:12px; }
+  .partbox { display:flex; gap:4px; align-items:center; }
+  .partbox input, .fld .partbox input { width:72px; flex:none; text-align:center; }
+  .chk input, .fld .chk input { width:auto; margin:0; }
+  .partbox button { min-width:34px; padding:6px 0; }
+  .chk { display:flex; gap:6px; align-items:center; font-size:12.5px; color:var(--dim); margin-top:6px; cursor:pointer; }
+  .fld > span .link { font-size:11px; text-transform:none; letter-spacing:0; margin-left:6px; }
+  @media (max-width:900px) { #infoCard .sigrid { grid-template-columns:1fr 1fr; } }
+  @media (max-width:560px) { #infoCard .sigrid { grid-template-columns:1fr; } }
+
+  /* title builder */
+  .pal { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
+  .pal .pl { font-size:11px; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; align-self:center; margin-right:4px; }
+  .track { min-height:58px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:10px; border:2px dashed var(--line); border-radius:10px; background:var(--inset); }
+  .track.over { border-color:var(--acc); }
+  .track .ph { color:var(--dim); font-size:13px; }
+  .tchip { display:inline-flex; align-items:center; gap:4px; padding:6px 10px; border-radius:8px; font-weight:600; font-size:13.5px; cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; background:var(--card2); border:1px solid var(--line); color:var(--fg); white-space:nowrap; }
+  .tchip.k-f { background:color-mix(in srgb, var(--acc) 15%, var(--card)); color:var(--acc); border-color:color-mix(in srgb, var(--acc) 35%, transparent); }
+  .tchip.k-s { font-family:var(--mono); min-width:30px; justify-content:center; }
+  .tchip.k-t { background:var(--card); font-weight:500; }
+  .tchip .x { padding:0 2px 0 4px; background:transparent; border:0; color:var(--dim); font-size:16px; line-height:1; min-height:0; box-shadow:none; cursor:pointer; }
+  .tchip .x:hover { color:var(--bad); }
+  .tchip input { width:140px; font-size:13.5px; padding:2px 6px; }
+  .tchip.dragging { opacity:.3; }
+  .tghost { position:fixed; pointer-events:none; z-index:1000; transform:translate(-50%, -60%); box-shadow:0 8px 24px var(--shadow); }
+  .tcaret { width:3px; align-self:stretch; min-height:30px; background:var(--acc); border-radius:2px; }
+  .fmtrow .sl b { display:flex; gap:8px; align-items:center; }
+
+  /* network card */
+  #netCard .nwrap { display:grid; grid-template-columns:minmax(0, 1.25fr) minmax(0, 1fr); gap:16px; align-items:stretch; }
+  #netCard .ngraph { display:flex; flex-direction:column; min-width:0; }
+  #netCard .hist { flex:none; }
+  #nHealth, #nwIf, #nwPorts, #nwReach { overflow-x:auto; }
+  #netCard .ngraph .hc { position:relative; flex:1; min-height:190px; }
+  #netCard .ngraph canvas { position:absolute; inset:0; width:100%; height:100%; background:var(--inset); border-radius:8px; }
+  table.hl { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.hl th { text-align:left; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); font-weight:700; padding:4px 6px; border-bottom:1px solid var(--line); }
+  table.hl td:nth-child(2), table.hl td:nth-child(3) { white-space:nowrap; }
+  table.hl td { padding:6px; border-bottom:1px solid var(--line); vertical-align:top; font-variant-numeric:tabular-nums; }
+  table.hl td small { display:block; color:var(--dim); font-size:11px; }
+  table.hl .g { color:var(--ok); } table.hl .w { color:var(--warn); } table.hl .b { color:var(--bad); }
+  .nev { margin-top:12px; border-top:1px solid var(--line); padding-top:8px; }
+  .evl { display:flex; flex-direction:column; gap:2px; font-size:12.5px; }
+  .evl div { display:flex; gap:10px; } .evl time { color:var(--dim); font-variant-numeric:tabular-nums; flex:none; white-space:nowrap; min-width:84px; }
+  .evl b { flex:none; } .evl .ok b { color:var(--ok); } .evl .bad b { color:var(--bad); } .evl .info b { color:var(--fg); }
+  @media (max-width:1000px) { #netCard .nwrap { grid-template-columns:1fr; } }
+
   /* stream info card */
   #infoCard .ititle { font-size:19px; font-weight:700; line-height:1.25; overflow-wrap:anywhere; }
   #infoCard .isermon { font-size:14px; margin-top:2px; } #infoCard .isermon b { font-weight:600; }
@@ -393,11 +444,12 @@
     <button data-pane="dests"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><path d="M7 12h4M11 12l8-6M11 12l8 6M11 12h8"/></svg><span>Destinations</span></button>
     <button data-pane="youtube" class="sub"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z"/></svg><span>YouTube</span></button>
     <button data-pane="facebook" class="sub"><svg viewBox="0 0 24 24"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/></svg><span>Facebook</span></button>
+    <button data-pane="titles"><svg viewBox="0 0 24 24"><path d="M4 6h16M9 6v13M15 12h5M17.5 12v7"/></svg><span>Title formats</span></button>
     <button data-pane="web"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 9l4 2-4 2z M8 21h8"/></svg><span>Web player</span></button>
     <button data-pane="ndi"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v7"/></svg><span>NDI</span></button>
     <button data-pane="rec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span>Recording</span></button>
     <button data-pane="companion"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Companion</span></button>
-    <button data-pane="network"><svg viewBox="0 0 24 24"><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 17.5h.01M10 17.5h.01M12 14V8M8 4h8v4H8z"/></svg><span>Ports</span></button>
+    <button data-pane="network"><svg viewBox="0 0 24 24"><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 17.5h.01M10 17.5h.01M12 14V8M8 4h8v4H8z"/></svg><span>Network</span></button>
     <button data-pane="system"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>System</span></button>
   </div>
   <div class="pane" id="pane"></div>
@@ -466,14 +518,15 @@
       S = j; ST = j.status;
       show(tab === 'login' ? 'main' : tab);
       openEvents();
-      histLoad();
+      histLoad(); brLoad();
     });
   }
   function openEvents() {
     if (es) es.close();
     es = new EventSource('api/events');
-    es.addEventListener('state', function (e) { S = JSON.parse(e.data); ST = S.status; document.body.classList.remove('offline'); renderAll(true); });
-    es.addEventListener('status', function (e) { ST = JSON.parse(e.data); if (S) S.status = ST; document.body.classList.remove('offline'); renderAll(false); });
+    es.addEventListener('state', function (e) { S = JSON.parse(e.data); ST = S.status; if (S.events) EV = S.events.slice(); document.body.classList.remove('offline'); renderAll(true); });
+    es.addEventListener('status', function (e) { ST = JSON.parse(e.data); if (S) S.status = ST; document.body.classList.remove('offline'); brFromStatus(); renderAll(false); });
+    es.addEventListener('log', function (e) { EV.push(JSON.parse(e.data)); if (EV.length > 300) EV.shift(); if (tab === 'main') renderNet(); });
     es.addEventListener('levels', function (e) { LV = JSON.parse(e.data); LV && (LV.at = Date.now()); histFromLevels(LV); });
     es.onerror = function () {
       document.body.classList.add('offline');
@@ -579,65 +632,119 @@
       $$('.dyn', g).forEach(function (x) { x.remove(); });
       S.settings.destinations.forEach(function (d) { g.insertAdjacentHTML('beforeend', '<article class="dev dyn" data-dest="' + d.id + '"></article>'); });
       g.insertAdjacentHTML('beforeend', '<article class="dev dyn add" id="addDest"><b>+ Add destination</b><span class="note">YouTube, Facebook, RTMP, SRT or NDI</span></article>');
-      g.insertAdjacentHTML('beforeend', '<article class="dev dyn" id="webCard"></article><article class="dev dyn" id="recCard"></article>');
+      g.insertAdjacentHTML('beforeend', '<article class="dev dyn" id="webCard"></article><article class="dev dyn" id="recCard"></article><article class="dev dyn wide" id="netCard"></article>');
       cardsKey = key;
     }
     S.settings.destinations.forEach(function (d, i) { renderDest($('[data-dest="' + d.id + '"]'), d, ST.destinations[i] || { state: 'off' }); });
-    renderWeb(); renderRec(); renderInfo();
+    renderWeb(); renderRec(); renderInfo(); renderNet();
     renderAlerts();
   }
 
-  // ---------- stream info (one place for every destination) ----------
+  // ---------- stream info: pick a format, fill in this week's details ----------
   var PRIVACY = [['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']];
-  var INFO_KEYS = ['title', 'description', 'privacy', 'category'];
+  var TOKENS = [['weekday', 'Weekday'], ['date', 'Date'], ['time', 'Time'], ['series', 'Series'], ['part', 'Part #'], ['sermon', 'Sermon'], ['speaker', 'Speaker']];
   function catName(id) { var c = (S.categories || []).find(function (x) { return x[0] === id; }); return c ? c[1] : ''; }
-  function fmtPreview(t) {
-    var now = new Date();
-    return String(t || '').replace(/\{date\}/g, now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))
-      .replace(/\{weekday\}/g, now.toLocaleDateString('en-US', { weekday: 'long' }))
-      .replace(/\{time\}/g, now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
-  }
-  // same clean-up the server does when {sermon} or {speaker} is empty
+  function hasType(t) { return S.settings.destinations.some(function (d) { return d.type === t; }); }
+  // same clean-up the server does when a piece is empty
   function tidyTitle(t) {
     return String(t).replace(/\s+(with|by|featuring|feat\.)\s*$/i, ' ')
-      .replace(/(\s*[-–—|·:]\s*)(?:[-–—|·:]\s*)+/g, '$1')
-      .replace(/^\s*[-–—|·:]\s*/, '').replace(/\s*[-–—|·:]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+      .replace(/(\s*[-–—|·:,]\s*)(?:[-–—|·:,]\s*)+/g, '$1')
+      .replace(/^\s*[-–—|·:,]\s*/, '').replace(/\s*[-–—|·:,]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
   }
-  function samePreset(p, v) { return INFO_KEYS.every(function (k) { return (p[k] || '') === (v[k] || ''); }); }
-  function hasType(t) { return S.settings.destinations.some(function (d) { return d.type === t; }); }
-  function renderInfo() {
-    var st = S.settings.stream, el = $('#infoCard');
-    var yt = hasType('youtube');
-    var preset = st.presets.find(function (p) { return p.id === st.presetId; });
-    // only account-connected destinations can be given a title; stream-key ones use whatever is set on the platform
+  /** Fill a title template with today's date and the given details. */
+  function fillTitle(t, v) {
+    var now = new Date();
+    v = v || {};
+    return tidyTitle(String(t || '')
+      .replace(/\{date\}/g, now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))
+      .replace(/\{weekday\}/g, now.toLocaleDateString('en-US', { weekday: 'long' }))
+      .replace(/\{time\}/g, now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))
+      .replace(/\{sermon\}/g, v.sermon || '').replace(/\{speaker\}/g, v.speaker || '').replace(/\{series\}/g, v.series || '')
+      .replace(/\{part\}/g, Number(v.part) > 0 ? 'Part ' + Number(v.part) : ''));
+  }
+
+  var siDirty = false, siDescFromFmt = true, siBuiltFor = null;
+  function siFmt(id) { return S.settings.stream.presets.find(function (p) { return p.id === id; }); }
+  function siVals() {
+    return { presetId: $('#siFmt').value, series: $('#siSeries').value.trim(), part: Number($('#siPart').value) || 0, autoPart: $('#siAuto').checked,
+      sermon: $('#siSermon').value.trim(), speaker: $('#siSpeaker').value.trim(), description: $('#siDesc').value };
+  }
+  function siFill() {
+    var st = S.settings.stream;
+    $('#siFmt').innerHTML = st.presets.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('');
+    $('#siFmt').value = st.presetId;
+    $('#siSeries').value = st.series || ''; $('#siPart').value = st.part || 0; $('#siAuto').checked = st.autoPart !== false;
+    $('#siSermon').value = st.sermon || ''; $('#siSpeaker').value = st.speaker || ''; $('#siDesc').value = st.description || '';
+    $('#siSpkList').innerHTML = (st.speakers || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+    $('#siSeriesList').innerHTML = (st.seriesList || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+    var f = siFmt(st.presetId);
+    siDescFromFmt = !f || (st.description || '') === (f.description || '');
+    siDirty = false;
+  }
+  function siPaint() {
+    var st = S.settings.stream, v = siVals(), f = siFmt(v.presetId) || {};
+    var yt = hasType('youtube'), live = ST.stream.broadcasts;
+    $('#siTitle').textContent = fillTitle(f.title, v) || '—';
+    var by = [v.series ? v.series + (v.part > 0 ? ', Part ' + v.part : '') : '', v.sermon, v.speaker].filter(Boolean);
     var uses = S.settings.destinations.filter(function (d) { return d.connect === 'api' && d.useShared !== false; }).map(function (d) { return d.name; });
-    var keyed = S.settings.destinations.some(function (d) { return d.type === 'youtube' || d.type === 'facebook' ? d.connect !== 'api' : false; });
-    var own = S.settings.destinations.filter(function (d) { return d.useShared === false && d.connect === 'api'; }).map(function (d) { return d.name; });
+    var keyed = S.settings.destinations.some(function (d) { return (d.type === 'youtube' || d.type === 'facebook') && d.connect !== 'api'; });
+    $('#siSub').innerHTML = (by.length ? 'Web player shows: <b>' + esc(by.join(' · ')) + '</b> under the title · ' : '') +
+      (yt ? 'YouTube: <b>' + esc((PRIVACY.find(function (x) { return x[0] === f.privacy; }) || [0, 'Public'])[1]) + '</b>' + (f.category ? ' · <b>' + esc(catName(f.category)) + '</b>' : '') + ' · ' : '') +
+      'Used by ' + (uses.length ? esc(uses.join(', ')) + ' and the web player' : 'the web player') +
+      (keyed ? '<br>Destinations using a stream key keep the title set on YouTube or Facebook.' : '');
     var errs = ST.destinations.filter(function (d) { return d.infoError; }).map(function (d) { return d.infoError; });
-    var html = '<div class="dh"><span class="dot acc"></span><div class="dn">Stream info</div><div class="chips">' +
-      (preset ? '<span class="chip a">' + esc(preset.name) + '</span>' : '') +
-      (ST.stream.broadcasts ? '<span class="chip l">On air · edits update ' + ST.stream.broadcasts + ' broadcast' + (ST.stream.broadcasts > 1 ? 's' : '') + '</span>' : '') + '</div></div>' +
-      '<div class="irow"><div><div class="ititle">' + esc(ST.stream.title) + '</div>' +
-      (st.sermon || st.speaker ? '<div class="isermon">' + (st.sermon ? 'Sermon: <b>' + esc(st.sermon) + '</b>' : '') + (st.sermon && st.speaker ? ' · ' : '') + (st.speaker ? 'Speaker: <b>' + esc(st.speaker) + '</b>' : '') + '</div>' : '') +
-      '<div class="idesc">' + (ST.stream.description ? esc(ST.stream.description) : 'No description') + '</div>' +
-      '<div class="prev">' + (yt ? 'YouTube: <b>' + esc((PRIVACY.find(function (p) { return p[0] === st.privacy; }) || [0, 'Public'])[1]) + '</b>' + (st.category ? ' · <b>' + esc(catName(st.category)) + '</b>' : '') + ' · ' : '') +
-      'Used by ' + (uses.length ? esc(uses.join(', ')) + ' and the web player' : 'the web player') + (own.length ? ' · Own title: ' + esc(own.join(', ')) : '') + '</div>' +
-      (keyed ? '<div class="prev">Destinations using a stream key keep the title set on YouTube or Facebook. Switch them to <b>Account</b> to set it from here.</div>' : '') + '</div>' +
-      '<div class="ipre">' + (st.presets.length ? '<select id="iPreset" title="Load a preset"><option value="">Load preset…</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') + '</select>' : '') +
-      '<button class="on" id="iEdit">Edit</button></div></div>' +
-      (errs.length ? '<div class="errbox">' + errs.map(esc).join('<br>') + '</div>' : '');
-    if (el.innerHTML === html) return;
-    el.innerHTML = html;
-    $('#iEdit').onclick = editInfo;
-    var sel = $('#iPreset');
-    if (sel) sel.onchange = function () {
-      var p = st.presets.find(function (x) { return x.id === sel.value; });
-      sel.value = '';
-      if (!p) return;
-      var go = function () { call('POST', 'api/stream', { title: p.title, description: p.description, privacy: p.privacy, category: p.category, presetId: p.id }).then(infoResult); };
-      if (ST.stream.broadcasts) confirmBox('Load ' + esc(p.name) + '?', 'You are live. The title on YouTube and Facebook changes to:<br><b>' + esc(fmtPreview(p.title)) + '</b>', 'Load and update', go);
-      else go();
-    };
+    $('#siErr').innerHTML = errs.map(esc).join('<br>'); $('#siErr').classList.toggle('hide', !errs.length);
+    $('#siChips').innerHTML = live ? '<span class="chip l">On air · saving updates ' + live + ' broadcast' + (live > 1 ? 's' : '') + '</span>' : '';
+    $('#siApply').disabled = !siDirty;
+    $('#siApply').textContent = siDirty && live ? 'Save and update ' + live + ' live' : 'Save';
+    $('#siRevert').classList.toggle('hide', !siDirty);
+    $('#siHint').textContent = siDirty ? 'Not saved yet' : '';
+    $('#siDescReset').classList.toggle('hide', siDescFromFmt || !f.description);
+  }
+  function renderInfo() {
+    var el = $('#infoCard');
+    if (siBuiltFor !== el) {
+      siBuiltFor = el;
+      el.innerHTML = '<div class="dh"><span class="dot acc"></span><div class="dn">Stream info</div><div class="chips" id="siChips"></div></div>' +
+        '<div class="sititle" id="siTitle"></div><div class="prev" id="siSub"></div>' +
+        '<div class="sigrid">' +
+        '<label class="fld"><span>Format</span><select id="siFmt"></select></label>' +
+        '<label class="fld"><span>Series</span><input id="siSeries" list="siSeriesList" maxlength="80" placeholder="e.g. Romans" autocomplete="off"><datalist id="siSeriesList"></datalist></label>' +
+        '<div class="fld"><span>Part (0 = none)</span><div class="partbox"><button type="button" id="siPartDn" title="One less">−</button><input id="siPart" type="number" min="0" max="999"><button type="button" id="siPartUp" title="One more">+</button></div>' +
+        '<label class="chk"><input type="checkbox" id="siAuto"> Count up after each stream</label></div>' +
+        '<label class="fld"><span>Sermon</span><input id="siSermon" maxlength="120" placeholder="e.g. Walking by Faith" autocomplete="off"></label>' +
+        '<label class="fld"><span>Speaker</span><input id="siSpeaker" list="siSpkList" maxlength="80" placeholder="e.g. Pastor John Smith" autocomplete="off"><datalist id="siSpkList"></datalist></label>' +
+        '<label class="fld"><span>Description <button type="button" class="link" id="siDescReset">Use the format\'s</button></span><textarea id="siDesc" rows="2" maxlength="5000"></textarea></label>' +
+        '</div><div class="errbox hide" id="siErr"></div>' +
+        '<div class="df"><span class="when" id="siHint"></span><button id="siRevert" class="hide">Undo</button><button class="on" id="siApply" disabled>Save</button></div>';
+      var dirty = function () { siDirty = true; siPaint(); };
+      ['#siSeries', '#siPart', '#siSermon', '#siSpeaker'].forEach(function (k) { $(k).addEventListener('input', dirty); });
+      $('#siAuto').addEventListener('change', dirty);
+      $('#siDesc').addEventListener('input', function () { siDescFromFmt = false; dirty(); });
+      $('#siFmt').addEventListener('change', function () {
+        var f = siFmt($('#siFmt').value);
+        if (f && siDescFromFmt) $('#siDesc').value = f.description || '';
+        dirty();
+      });
+      $('#siDescReset').onclick = function () { var f = siFmt($('#siFmt').value); $('#siDesc').value = (f && f.description) || ''; siDescFromFmt = true; dirty(); };
+      var step = function (n) { $('#siPart').value = Math.max(0, Math.min(999, (Number($('#siPart').value) || 0) + n)); dirty(); };
+      $('#siPartDn').onclick = function () { step(-1); }; $('#siPartUp').onclick = function () { step(1); };
+      $('#siRevert').onclick = function () { siFill(); siPaint(); };
+      $('#siApply').onclick = function () {
+        var v = siVals(), live = ST.stream.broadcasts;
+        var go = function () {
+          $('#siApply').disabled = true;
+          call('POST', 'api/stream', v).then(function (r) {
+            if (!r.ok && !r.updated) { $('#siApply').disabled = false; return toast(r.error || 'Not saved'); }
+            siDirty = false; infoResult(r);
+          });
+        };
+        if (live) confirmBox('Update the live broadcasts?', 'The title on YouTube and Facebook changes to:<br><b>' + esc($('#siTitle').textContent) + '</b>', 'Save and update', go);
+        else go();
+      };
+      siFill();
+    } else if (!siDirty && !el.contains(document.activeElement)) siFill();
+    siPaint();
   }
   function infoResult(r) {
     if (!r.ok) { toast(r.error || 'Not saved'); return r; }
@@ -645,116 +752,9 @@
     return r;
   }
 
-  function editInfo() {
-    var st = S.settings.stream, live = ST.stream.broadcasts;
-    var yt = hasType('youtube'), fb = hasType('facebook');
-    var platformNote = yt && fb ? 'YouTube and Facebook use the title and description; privacy and category are YouTube only.'
-      : yt ? 'YouTube uses the title, description, privacy and category.'
-      : fb ? 'Facebook uses the title and description.'
-      : 'The web player shows the title, sermon and speaker. Add YouTube or Facebook as a destination to send the title there too.';
-    var html = '<div class="mh">Stream info</div><div class="mb" id="iEd">' +
-      '<div class="note" style="margin-bottom:10px">One title for the web player' + (yt && fb ? ', YouTube and Facebook' : yt ? ' and YouTube' : fb ? ' and Facebook' : '') + '.' + (yt || fb ? ' A destination can still use its own (Edit on its card).' : '') + '</div>' +
-      '<div class="msec">Preset</div><div class="prow"><select id="ePreset"><option value="">None</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '"' + (p.id === st.presetId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>' +
-      '<button id="ePSave">Save as preset…</button><button id="ePUpd" class="hide">Update preset</button><button id="ePDel" class="danger hide">Delete</button></div>' +
-      '<div class="prow hide" id="ePNew" style="margin-top:6px"><input id="ePName" placeholder="Preset name, e.g. Sunday Service" maxlength="40" style="flex:1"><button class="on" id="ePNewOk">Save preset</button><button id="ePNewNo">Cancel</button></div>' +
-      '<div class="msec">Details</div><div class="fgrid">' +
-      '<label class="fld wide"><span>Sermon</span><input data-s="sermon" maxlength="120" value="' + esc(st.sermon || '') + '" placeholder="e.g. Walking by Faith"></label>' +
-      '<label class="fld wide"><span>Speaker</span><div class="prow"><input data-s="speaker" maxlength="80" list="spkList" value="' + esc(st.speaker || '') + '" placeholder="e.g. Pastor John Smith" style="flex:1" autocomplete="off"><button type="button" id="spkClear" title="No speaker">Clear</button></div>' +
-        '<datalist id="spkList">' + (st.speakers || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist></label>' +
-      ((st.speakers || []).length ? '<div class="fld wide"><div class="prev">Recent: ' + st.speakers.slice(0, 8).map(function (n) { return '<button type="button" class="tok" data-spk="' + esc(n) + '">' + esc(n) + '</button>'; }).join(' ') + '</div></div>' : '') +
-      '<div class="fld wide note" style="margin-top:-4px">Sermon and speaker are shown under the title in the web player. They aren\'t saved in presets, so they can change every week.</div>' +
-      '<label class="fld wide"><span>Title</span><input data-i="title" maxlength="100" value="' + esc(st.title) + '"></label>' +
-      '<div class="fld wide"><div class="prev">Insert: <button type="button" class="tok" data-tok="{weekday}">{weekday}</button> <button type="button" class="tok" data-tok="{date}">{date}</button> <button type="button" class="tok" data-tok="{time}">{time}</button> <button type="button" class="tok" data-tok="{sermon}">{sermon}</button> <button type="button" class="tok" data-tok="{speaker}">{speaker}</button></div><div class="prev" id="ePrev"></div></div>' +
-      '<label class="fld wide"><span>Description</span><textarea data-i="description" rows="5" maxlength="5000">' + esc(st.description) + '</textarea></label>' +
-      '<label class="fld' + (yt ? '' : ' hide') + '"><span>YouTube privacy</span><select data-i="privacy">' + opts(PRIVACY, st.privacy) + '</select></label>' +
-      '<label class="fld' + (yt ? '' : ' hide') + '"><span>YouTube category</span><select data-i="category">' + opts(S.categories || [], st.category) + '</select></label>' +
-      '</div><div class="note" style="margin-top:8px">' + platformNote + '</div>' +
-      '<div class="formerr hide" id="iErr"></div></div>' +
-      '<div class="mf"><span class="sp"></span><button id="mNo">Cancel</button><button class="on" id="iSave">' + (live ? 'Save and update ' + live + ' live broadcast' + (live > 1 ? 's' : '') : 'Save') + '</button></div>';
-    modal(html, true);
-    var root = $('#iEd');
-    var presets = st.presets.slice();
-    var val = function () { var o = {}; $$('[data-i]', root).forEach(function (e) { o[e.dataset.i] = e.value; }); return o; };
-    var chosen = function () { var id = $('#ePreset').value; return presets.find(function (x) { return x.id === id; }); };
-    var err = function (m) { $('#iErr').textContent = m; $('#iErr').classList.toggle('hide', !m); };
-    var paint = function () {
-      var v = val(), p = chosen();
-      $('#ePrev').innerHTML = 'Today this reads: <b>' + (esc(tidyTitle(fmtPreview(v.title).replace(/\{sermon\}/g, $('[data-s=sermon]', root).value.trim()).replace(/\{speaker\}/g, $('[data-s=speaker]', root).value.trim()))) || '—') + '</b>';
-      $('#ePUpd').classList.toggle('hide', !p || samePreset(p, v));
-      $('#ePDel').classList.toggle('hide', !p);
-    };
-    var fill = function (p) { INFO_KEYS.forEach(function (k) { $('[data-i=' + k + ']', root).value = p[k] || (k === 'privacy' ? 'public' : ''); }); paint(); };
-    $$('[data-i], [data-s]', root).forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
-    // where the cursor was in the Title box (null until it has been clicked or typed in)
-    var titleCaret = null, tIn = $('[data-i=title]', root);
-    ['keyup', 'mouseup', 'input', 'select'].forEach(function (ev) { tIn.addEventListener(ev, function () { titleCaret = [tIn.selectionStart, tIn.selectionEnd]; }); });
-    $$('[data-tok]', root).forEach(function (b) {
-      b.onclick = function () {
-        var t = $('[data-i=title]', root), tok = b.dataset.tok;
-        if (titleCaret == null) {
-          // nowhere chosen yet: add to the end, with a dash between it and what's there
-          var v = t.value.replace(/\s+$/, '');
-          t.value = v + (v && !/[-–—|·:(]$/.test(v) ? ' - ' : v ? ' ' : '') + tok;
-          titleCaret = t.value.length;
-        } else {
-          var a = titleCaret[0], z = titleCaret[1];
-          t.value = t.value.slice(0, a) + tok + t.value.slice(z);
-          titleCaret = [a + tok.length, a + tok.length];
-        }
-        t.focus(); var at = Array.isArray(titleCaret) ? titleCaret[0] : titleCaret; t.selectionStart = t.selectionEnd = at; paint();
-      };
-    });
-    $$('[data-spk]', root).forEach(function (b) { b.onclick = function () { $('[data-s=speaker]', root).value = b.dataset.spk; paint(); }; });
-    $('#spkClear').onclick = function () { $('[data-s=speaker]', root).value = ''; paint(); };
-    $('#ePreset').onchange = function () { var p = chosen(); if (p) fill(p); else paint(); };
-    $('#ePSave').onclick = function () { $('#ePNew').classList.remove('hide'); $('#ePName').focus(); };
-    $('#ePNewNo').onclick = function () { $('#ePNew').classList.add('hide'); };
-    $('#ePNewOk').onclick = function () {
-      var name = $('#ePName').value.trim();
-      call('POST', 'api/stream/presets', { name: name, info: val() }).then(function (r) {
-        if (!r.ok) return err(r.error);
-        err('');
-        presets.push(Object.assign({ id: r.id, name: name }, val()));
-        var o = document.createElement('option'); o.value = r.id; o.textContent = name;
-        $('#ePreset').appendChild(o); $('#ePreset').value = r.id;
-        $('#ePNew').classList.add('hide'); $('#ePName').value = '';
-        toast('Preset saved', true); paint();
-      });
-    };
-    $('#ePName').onkeydown = function (e) { if (e.key === 'Enter') $('#ePNewOk').click(); };
-    $('#ePUpd').onclick = function () {
-      var p = chosen();
-      call('POST', 'api/stream/presets', { id: p.id, name: p.name, info: val() }).then(function (r) { if (!r.ok) return err(r.error); Object.assign(p, val()); toast('Preset updated', true); paint(); });
-    };
-    $('#ePDel').onclick = function () {
-      var p = chosen();
-      call('DELETE', 'api/stream/presets/' + p.id).then(function (r) {
-        if (!r.ok) return err('Could not delete the preset');
-        presets = presets.filter(function (x) { return x !== p; });
-        var o = $('#ePreset option[value="' + p.id + '"]'); if (o) o.remove();
-        $('#ePreset').value = ''; toast('Preset deleted', true); paint();
-      });
-    };
-    $('#mNo').onclick = closeModal;
-    $('#iSave').onclick = function () {
-      var v = val(), p = chosen();
-      v.presetId = p && samePreset(p, v) ? p.id : '';
-      v.sermon = $('[data-s=sermon]', root).value;
-      v.speaker = $('[data-s=speaker]', root).value;
-      $('#iSave').disabled = true;
-      call('POST', 'api/stream', v).then(function (r) {
-        $('#iSave').disabled = false;
-        // saved, but a live broadcast refused the change: close and show it on the card
-        if (!r.ok && !r.updated) return err(r.error || 'Not saved');
-        closeModal(); infoResult(r);
-      });
-    };
-    paint();
-  }
-
   function renderAlerts() {
     var a = [];
-    if (ST.mediamtx.state === 'error' || ST.mediamtx.state === 'retrying') a.push('<div class="errbox">The relay server (MediaMTX) is not running: ' + esc(ST.mediamtx.error || '') + '. Another app may be using one of its ports; check Settings › Ports.</div>');
+    if (ST.mediamtx.state === 'error' || ST.mediamtx.state === 'retrying') a.push('<div class="errbox">The relay server (MediaMTX) is not running: ' + esc(ST.mediamtx.error || '') + '. Another app may be using one of its ports; check Settings › Network.</div>');
     if (!ST.recording.writable && ST.recording.enabled) a.push('<div class="errbox">Recordings cannot be saved to <b>' + esc(ST.recording.dir) + '</b>. Give the container\'s user (uid 1000) write access to that dataset.</div>');
     var y = ST.platforms.youtube, f = ST.platforms.facebook;
     if (y.needsReconnect) a.push('<div class="errbox">YouTube needs to be connected again (Settings › YouTube).</div>');
@@ -1004,6 +1004,147 @@
     else fallback();
     function fallback() { var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed'); } t.remove(); }
   }
+  // ---------- network: bitrate graph, connection health, events ----------
+  var BR = [], brWin = 10, EV = [], netBuiltFor = null;
+  var DEST_COLORS = ['#4c8dff', '#f2994a', '#bb6bd9', '#2ec4b6', '#eb5757', '#f2c94c', '#9b51e0', '#27ae60'];
+  try { brWin = Number(localStorage.getItem('br-brwin')) || 10; } catch (e) {}
+  function brLoad() { call('GET', 'api/bitrate/history?seconds=3600').then(function (r) { if (r.ok) { BR = r.points || []; drawBitrate(); } }); }
+  function brFromStatus() {
+    if (!ST) return;
+    var t = Math.floor(Date.now() / 1000);
+    if (BR.length && BR[BR.length - 1][0] >= t) return;
+    var d = {};
+    S.settings.destinations.forEach(function (x, i) {
+      var st = ST.destinations[i];
+      if (x.type !== 'ndi' && st && st.state === 'live' && st.stats && st.stats.kbps != null) d[x.id] = Math.round(st.stats.kbps);
+    });
+    BR.push([t, ST.input.ready ? ST.input.kbps : null, ST.web.viewers.kbps || 0, d]);
+    while (BR.length && BR[0][0] <= t - 3600) BR.shift();
+  }
+  function destColor(id) { var i = S.settings.destinations.findIndex(function (d) { return d.id === id; }); return DEST_COLORS[(i < 0 ? 0 : i) % DEST_COLORS.length]; }
+  function drawBitrate() {
+    var c = $('#brCan'); if (!c || tab !== 'main') return;
+    var W = c.clientWidth * 2, H = c.clientHeight * 2;
+    if (!W || !H) return;
+    if (c.width !== W) c.width = W; if (c.height !== H) c.height = H;
+    var g = c.getContext('2d'), cs = getComputedStyle(document.documentElement), col = function (v) { return cs.getPropertyValue(v).trim(); };
+    g.clearRect(0, 0, W, H);
+    var span = brWin * 60, now = Math.floor(Date.now() / 1000), t0 = now - span;
+    var pts = BR.filter(function (p) { return p[0] > t0; });
+    var total = function (p) { var s = p[2] || 0; for (var k in p[3]) s += p[3][k]; return s; };
+    var max = 1000;
+    pts.forEach(function (p) { max = Math.max(max, p[1] || 0, total(p)); });
+    var stepK = [1000, 2000, 5000, 10000, 20000, 50000, 100000].find(function (s) { return max / s <= 5; }) || 200000;
+    var top = Math.ceil(max * 1.08 / stepK) * stepK;
+    var L = 120, R = W - 12, T = 12, B = H - 34;
+    var x = function (t) { return L + (R - L) * (t - t0) / span; }, y = function (k) { return B - (B - T) * Math.min(1, k / top); };
+    g.font = '20px system-ui'; g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (var k = 0; k <= top; k += stepK) { g.fillStyle = col('--line'); g.fillRect(L, Math.round(y(k)), R - L, 1); g.fillStyle = col('--dim'); g.fillText((k / 1000) + ' Mb/s', L - 10, y(k)); }
+    g.textBaseline = 'top';
+    var tstep = brWin <= 1 ? 10 : brWin <= 5 ? 60 : brWin <= 10 ? 120 : brWin <= 30 ? 300 : 600;
+    for (var s = 0; s <= span; s += tstep) { var xx = x(now - s); g.fillStyle = col('--line'); g.fillRect(Math.round(xx), T, 1, B - T); g.fillStyle = col('--dim'); g.textAlign = s === 0 ? 'right' : s === span ? 'left' : 'center'; g.fillText(s === 0 ? 'now' : '−' + (s >= 60 ? (s / 60) + 'm' : s + 's'), xx, B + 8); }
+    var line = function (get, color, width, dash) {
+      g.strokeStyle = color; g.lineWidth = width; g.setLineDash(dash || []); g.lineJoin = 'round';
+      g.beginPath(); var on = false, last = null;
+      pts.forEach(function (p) { var v = get(p); if (v == null || (last != null && p[0] - last > 3)) { on = false; } if (v != null) { if (on) g.lineTo(x(p[0]), y(v)); else { g.moveTo(x(p[0]), y(v)); on = true; } } last = p[0]; });
+      g.stroke(); g.setLineDash([]);
+    };
+    var ids = {}; pts.forEach(function (p) { for (var id in p[3]) ids[id] = 1; });
+    line(function (p) { return p[1]; }, col('--ok'), 3);
+    Object.keys(ids).forEach(function (id) { line(function (p) { return p[3][id] != null ? p[3][id] : null; }, destColor(id), 2.5); });
+    line(function (p) { return p[2] ? p[2] : null; }, col('--teal'), 2.5);
+    line(function (p) { var t = total(p); return t ? t : null; }, col('--fg'), 3, [10, 8]);
+    if (!pts.some(function (p) { return p[1] != null || total(p); })) { g.fillStyle = col('--dim'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '22px system-ui'; g.fillText('Nothing coming in or going out yet', (L + R) / 2, (T + B) / 2); }
+    // legend
+    var leg = '<span><i style="background:var(--ok)"></i>Input</span>' + Object.keys(ids).map(function (id) { var d = S.settings.destinations.find(function (x) { return x.id === id; }); return '<span><i style="background:' + destColor(id) + '"></i>' + esc(d ? d.name : 'Removed') + '</span>'; }).join('') +
+      '<span><i style="background:var(--teal)"></i>Web viewers</span><span><i style="background:var(--fg);height:2px"></i>Total out</span>';
+    var lg = $('#brKey'); if (lg && lg.innerHTML !== leg) lg.innerHTML = leg;
+  }
+  setInterval(drawBitrate, 1000);
+
+  function q(v, warn, bad, higherIsWorse) {
+    if (v == null) return '';
+    var w = higherIsWorse === false ? v < warn : v > warn, b = higherIsWorse === false ? v < bad : v > bad;
+    return b ? 'b' : w ? 'w' : 'g';
+  }
+  function healthRows() {
+    var rows = [], i = ST.input, bad = 0;
+    var cell = function (cls, txt) { return '<span class="' + cls + '">' + txt + '</span>'; };
+    // input
+    var net = [];
+    if (i.ready) {
+      if (i.rtt != null) net.push(cell(q(i.rtt, 60, 200), 'RTT ' + i.rtt + ' ms'));
+      if (i.lossPct != null) net.push(cell(q(i.lossPct, 0.5, 2), 'loss ' + i.lossPct + '%'));
+      if (i.link && i.link.retrans != null) net.push(cell(q(i.link.packets ? 100 * i.link.retrans / i.link.packets : 0, 1, 5), i.link.retrans + ' resent'));
+      if (i.link && i.link.dropped) net.push(cell('b', i.link.dropped + ' dropped'));
+    }
+    var notes = [];
+    if (i.link && i.link.linkMbps) notes.push('link ' + i.link.linkMbps + ' Mb/s');
+    if (i.link && i.link.bufMs != null) notes.push('buffer ' + i.link.bufMs + ' ms');
+    if (i.reconnects) notes.push(cell(q(i.reconnects, 0, 3), i.reconnects + ' reconnect' + (i.reconnects > 1 ? 's' : '')));
+    if (!i.ready && i.lastDrop) notes.push('dropped ' + dur(Date.now() - i.lastDrop) + ' ago');
+    rows.push('<tr><td><b>Input</b><small>' + (i.ready ? esc((i.protocol || '') + (i.remote ? ' from ' + String(i.remote).replace(/:\d+$/, '') : '')) : 'Waiting') + '</small></td><td>' + (i.ready ? cell('g', 'Connected') : cell('', 'Waiting')) + '</td><td>' + (i.ready ? rate(i.kbps) : '–') + '</td><td>' + (net.join(' · ') || (i.ready && i.protocol !== 'SRT' ? '<small>Use SRT for loss and RTT numbers</small>' : '–')) + '</td><td>' + (notes.join(' · ') || '') + '</td></tr>');
+    if (i.ready && (i.lossPct > 2 || (i.rtt || 0) > 200)) bad++;
+    // destinations
+    S.settings.destinations.forEach(function (d, k) {
+      var st = ST.destinations[k] || { state: 'off' };
+      if (st.state === 'off' && !st.error) return;
+      var n = [], o = [];
+      if (d.type === 'ndi') {
+        n.push(cell('g', (st.receivers || 0) + ' receiver' + (st.receivers === 1 ? '' : 's')));
+      } else if (st.tcp) {
+        if (st.tcp.rtt != null) n.push(cell(q(st.tcp.rtt, 150, 400), 'RTT ' + st.tcp.rtt + ' ms' + (st.tcp.jitter != null ? ' ±' + st.tcp.jitter : '')));
+        if (st.tcp.retransPct != null) n.push(cell(q(st.tcp.retransPct, 1, 5), st.tcp.retransPct + '% resent'));
+      } else if (st.state === 'live') n.push('<small>' + (d.type === 'srt' ? 'SRT: no TCP numbers' : 'measuring…') + '</small>');
+      var sp = st.stats && st.stats.speed;
+      if (st.state === 'live' && sp != null) o.push(cell(q(sp, 0.98, 0.93, false), 'speed ' + sp + '×'));
+      if (st.stats && st.stats.drop) o.push(cell('b', st.stats.drop + ' frames dropped'));
+      if (st.drops) o.push(cell(q(st.drops, 0, 3), st.drops + ' drop' + (st.drops > 1 ? 's' : '')));
+      if (st.state === 'retrying' || st.state === 'error') { bad++; o.push(cell('b', esc(st.error || ''))); }
+      else if (st.state === 'live' && ((st.tcp && (st.tcp.retransPct > 5 || st.tcp.rtt > 400)) || (sp != null && sp < 0.93))) bad++;
+      rows.push('<tr><td><b>' + esc(d.name) + '</b><small>' + TYPE_NAME[d.type] + (st.tcp && st.tcp.peer ? ' · ' + esc(st.tcp.peer) : '') + '</small></td><td>' + chipFor(st.state) + '</td><td>' + (st.state === 'live' && d.type !== 'ndi' ? rate(st.stats && st.stats.kbps) : '–') + '</td><td>' + (n.join(' · ') || '–') + '</td><td>' + o.join(' · ') + '</td></tr>');
+    });
+    var w = ST.web;
+    if (w.enabled) rows.push('<tr><td><b>Web player</b><small>' + w.viewers.total + ' watching</small></td><td>' + chipFor(w.state) + '</td><td>' + (w.viewers.kbps ? rate(w.viewers.kbps) : '–') + '</td><td>' + (w.viewers.webrtc ? w.viewers.webrtc + ' WebRTC' : '') + (w.viewers.webrtc && w.viewers.hls ? ' · ' : '') + (w.viewers.hls ? w.viewers.hls + ' HLS' : '') + '</td><td></td></tr>');
+    return { html: '<table class="hl"><tr><th>Connection</th><th>State</th><th>Rate</th><th>Network</th><th>Notes</th></tr>' + rows.join('') + '</table>', bad: bad };
+  }
+  function evHtml(list) {
+    return list.length ? '<div class="evl">' + list.map(function (e) {
+      return '<div class="' + e.level + '"><time>' + new Date(e.t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }) + '</time><b>' + esc(e.who) + '</b><span>' + esc(e.what) + '</span></div>';
+    }).join('') + '</div>' : '<div class="note">Nothing yet</div>';
+  }
+  function renderNet() {
+    var el = $('#netCard');
+    if (!el) return;
+    if (netBuiltFor !== el) {
+      netBuiltFor = el;
+      el.innerHTML = '<div class="dh"><span class="dot acc" id="nDot"></span><div class="dn">Network</div><div class="chips" id="nChips"></div></div>' +
+        '<div class="nwrap"><div class="ngraph"><div class="hist"><div class="hh"><b>Bitrate</b><div class="seg" id="brWin"><button data-m="1">1 min</button><button data-m="5">5 min</button><button data-m="10">10 min</button><button data-m="30">30 min</button><button data-m="60">60 min</button></div>' +
+        '<div class="key" id="brKey"></div></div></div><div class="hc"><canvas id="brCan"></canvas></div></div>' +
+        '<div><div id="nHealth"></div></div></div>' +
+        '<div class="nev"><div class="hist"><div class="hh"><b>Recent events</b><button class="link" id="nAll" style="margin-left:auto">All events</button></div></div><div id="nEvents"></div></div>';
+      var paintWin = function () { $$('#brWin button').forEach(function (b) { b.classList.toggle('on', Number(b.dataset.m) === brWin); }); };
+      $$('#brWin button').forEach(function (b) { b.onclick = function () { brWin = Number(b.dataset.m); try { localStorage.setItem('br-brwin', brWin); } catch (e) {} paintWin(); drawBitrate(); }; });
+      paintWin();
+      $('#nAll').onclick = showEvents;
+      if (window.ResizeObserver) new ResizeObserver(function () { drawBitrate(); }).observe($('#brCan').parentNode);
+    }
+    var h = healthRows();
+    if ($('#nHealth').innerHTML !== h.html) $('#nHealth').innerHTML = h.html;
+    var out = (ST.web.viewers.kbps || 0) + ST.destinations.reduce(function (a, d, k) { var x = S.settings.destinations[k]; return a + (x && x.type !== 'ndi' && d.state === 'live' && d.stats && d.stats.kbps ? d.stats.kbps : 0); }, 0);
+    var chips = (out ? '<span class="chip a">Out ' + rate(out) + '</span>' : '') + (h.bad ? '<span class="chip b">' + h.bad + ' need attention</span>' : ST.input.ready ? '<span class="chip o">Healthy</span>' : '');
+    if ($('#nChips').innerHTML !== chips) $('#nChips').innerHTML = chips;
+    $('#nDot').className = 'dot ' + (h.bad ? 'bad' : ST.input.ready ? 'ok' : '');
+    var ev = evHtml(EV.slice(-6).reverse());
+    if ($('#nEvents').innerHTML !== ev) $('#nEvents').innerHTML = ev;
+  }
+  function showEvents() {
+    call('GET', 'api/events/log').then(function (r) {
+      modal('<div class="mh">Events</div><div class="mb" style="max-height:60vh;overflow:auto">' + evHtml((r.events || []).slice().reverse()) + '</div><div class="mf"><span class="note" style="margin-right:auto">Since BroadcastRelay started (last 300)</span><button id="mNo">Close</button></div>', true);
+      $('#mNo').onclick = closeModal;
+    });
+  }
+
   // ---------- web player viewers ----------
   var viewersTimer = null;
   function showViewers() {
@@ -1387,23 +1528,248 @@
         ex('POST', '/web/start', 'Web player: <code>start</code>, <code>stop</code>, <code>toggle</code>') +
         ex('POST', '/recording/on', 'Recording: <code>on</code>, <code>off</code>, <code>toggle</code>') +
         ex('POST', '/input/source/ndi', 'Switch the input: <code>stream</code> or <code>ndi</code>') +
-        ex('POST', '/stream/preset/<name, id or number>', 'Load a Stream info preset (updates live broadcasts)') +
-        ex('POST', '/stream', 'Set Stream info: JSON body <code>{"title": "…", "description": "…", "privacy": "public", "category": "29"}</code>') +
+        ex('POST', '/stream/preset/<name, id or number>', 'Switch to a title format (updates live broadcasts)') +
+        ex('POST', '/stream', 'Set Stream info: JSON body, any of <code>{"series": "Romans", "part": 3, "sermon": "…", "speaker": "…", "description": "…"}</code>') +
       '</table></div>' +
       '<div class="card"><h2>Status for feedback (GET)</h2><table class="kv">' +
-        ex('GET', '/status', 'JSON with <code>any_live</code>, <code>input_live</code>, <code>recording</code>, <code>web_viewers</code>, <code>stream_title</code>, <code>stream_preset</code>, <code>loudness_short</code>, <code>cpu</code> and <code>destinations.&lt;id&gt;.live</code>') +
+        ex('GET', '/status', 'JSON with <code>any_live</code>, <code>input_live</code>, <code>recording</code>, <code>web_viewers</code>, <code>stream_title</code>, <code>stream_preset</code> (format), <code>stream_series</code>, <code>stream_part</code>, <code>loudness_short</code>, <code>cpu</code> and <code>destinations.&lt;id&gt;.live</code>') +
       '</table>' + (ds.length ? '<div class="note" style="margin-top:8px">Destination ids: ' + ds.map(function (d) { return esc(d.name) + ' = <code>' + d.id + '</code>'; }).join(' · ') + '</div>' : '') +
       '<div class="note" style="margin-top:8px">In Companion, a Generic HTTP connection can poll <code>/status</code> into variables (JSON path e.g. <code>$.any_live</code>) and color buttons from them.</div></div>';
   };
   PANES.companion.wire = function (p) { $('#newTok', p).onclick = function () { confirmBox('Make a new token?', 'Companion buttons stop working until you paste the new token into Companion.', 'New token', function () { act('api/apitoken', 'New token made'); }, true); }; };
 
+  // ---------- title formats (drag and drop builder) ----------
+  var SEPS = [['-', ' - '], ['|', ' | '], ['·', ' · '], [':', ': '], [',', ', ']];
+  var TOKEN_NAMES = {}; TOKENS.forEach(function (t) { TOKEN_NAMES[t[0]] = t[1]; });
+  /** "{weekday} Service - {date}" -> [{k:'f',v:'weekday'},{k:'t',v:'Service'},{k:'s',v:'-'},{k:'f',v:'date'}] */
+  function parseTitle(t) {
+    var out = [];
+    String(t || '').split(/(\{(?:weekday|date|time|series|part|sermon|speaker)\})/).forEach(function (seg) {
+      var m = /^\{(\w+)\}$/.exec(seg);
+      if (m) return out.push({ k: 'f', v: m[1] });
+      seg.split(/(\s+[-–—|·]\s+|\s*:\s+|\s*,\s+)/).forEach(function (piece) {
+        var sep = /^\s*([-–—|·:,])\s*$/.exec(piece);
+        if (sep && /\s/.test(piece + ' ')) return out.push({ k: 's', v: sep[1].replace(/[–—]/, '-') });
+        if (piece.trim()) out.push({ k: 't', v: piece.trim() });
+      });
+    });
+    return out;
+  }
+  function buildTitle(chips) {
+    var out = '';
+    chips.forEach(function (c) {
+      if (c.k === 's') { out = out.replace(/\s+$/, '') + (SEPS.find(function (x) { return x[0] === c.v; }) || ['', ' ' + c.v + ' '])[1]; return; }
+      var piece = c.k === 'f' ? '{' + c.v + '}' : c.v;
+      if (out && !/\s$/.test(out)) out += ' ';
+      out += piece;
+    });
+    return out.trim();
+  }
+  function sampleVals() {
+    var st = S.settings.stream;
+    return { sermon: st.sermon || 'Walking by Faith', speaker: st.speaker || 'Pastor John Smith', series: st.series || 'Romans', part: st.part || 3 };
+  }
+  var fmtEdit = null; // { id, name, chips, description, privacy, category }
+  function chipLabel(c) { return c.k === 'f' ? TOKEN_NAMES[c.v] || c.v : c.k === 's' ? c.v : c.v; }
+
+  PANES.titles = function () {
+    var st = S.settings.stream, sv = sampleVals();
+    return '<div class="note pnote">A <b>format</b> is how the title is put together, like <i>Sunday Service - Romans, Part 3</i>. Build formats here once; on the main page you just pick one and fill in the series, part, sermon and speaker each week.</div>' +
+      '<div class="card"><h2>Formats</h2>' + st.presets.map(function (p, i) {
+        return '<div class="set fmtrow' + (i ? '' : ' first') + '"><div class="sl"><b>' + esc(p.name) + (p.id === st.presetId ? ' <span class="chip a">In use</span>' : '') + '</b><span>' + esc(fillTitle(p.title, sv)) + '</span></div>' +
+          '<div class="sc"><button data-fmv="' + p.id + '" data-dir="-1"' + (i ? '' : ' disabled') + ' title="Move up">↑</button><button data-fmv="' + p.id + '" data-dir="1"' + (i < st.presets.length - 1 ? '' : ' disabled') + ' title="Move down">↓</button><button data-fed="' + p.id + '">Edit</button></div></div>';
+      }).join('') + '<div class="set"><div class="sl"><span>Preview uses this week\'s details, or examples where they are empty.</span></div><div class="sc"><button class="on" id="fNew">New format</button></div></div></div>' +
+      '<div id="fmtEd"></div>';
+  };
+  PANES.titles.wire = function (p) {
+    $$('[data-fmv]', p).forEach(function (b) { b.onclick = function () { call('POST', 'api/stream/presets/' + b.dataset.fmv + '/move', { dir: Number(b.dataset.dir) }).then(function () { renderPane(true); }); }; });
+    $$('[data-fed]', p).forEach(function (b) { b.onclick = function () { var f = S.settings.stream.presets.find(function (x) { return x.id === b.dataset.fed; }); openFormat(f); }; });
+    $('#fNew', p).onclick = function () { openFormat(null); };
+    if (fmtEdit) drawFormat();
+  };
+  function openFormat(f) {
+    fmtEdit = f ? { id: f.id, name: f.name, chips: parseTitle(f.title), description: f.description || '', privacy: f.privacy || 'public', category: f.category || '' }
+      : { id: null, name: '', chips: parseTitle('{weekday} Service - {date}'), description: '', privacy: 'public', category: '' };
+    paneDirty = true;
+    drawFormat();
+    var ed = $('#fmtEd'); if (ed) ed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function drawFormat() {
+    var ed = $('#fmtEd'); if (!ed || !fmtEdit) return;
+    var yt = hasType('youtube'), fe = fmtEdit, many = S.settings.stream.presets.length > 1;
+    ed.innerHTML = '<div class="card"><h2>' + (fe.id ? 'Edit format' : 'New format') + '</h2>' +
+      set('Name', 'Shown in the Format list on the main page', '<input id="feName" class="wide" maxlength="40" placeholder="e.g. Sunday Service" value="' + esc(fe.name) + '">', 'first') +
+      '<div class="msec">Title</div>' +
+      '<div class="note">Drag pieces into the title and drag them to reorder. Drag a piece out of the title (or tap ×) to remove it. Tap a piece below to add it at the end. Tap a text piece in the title to change it.</div>' +
+      '<div class="pal" id="tbPal"><span class="pl">Details</span>' + TOKENS.map(function (t) { return '<span class="tchip k-f" data-add="f:' + t[0] + '">' + t[1] + '</span>'; }).join('') +
+        '<span class="pl" style="margin-left:8px">Text</span><span class="tchip k-t" data-add="t:">Text…</span><span class="tchip k-t" data-add="t:Service">Service</span><span class="tchip k-t" data-add="t:Live">Live</span>' +
+        '<span class="pl" style="margin-left:8px">Separators</span>' + SEPS.map(function (x) { return '<span class="tchip k-s" data-add="s:' + esc(x[0]) + '">' + esc(x[0]) + '</span>'; }).join('') + '</div>' +
+      '<div class="track" id="tbTrack"></div>' +
+      '<div class="prev" style="margin-top:8px">Reads: <b id="tbPrev"></b></div>' +
+      '<div class="prev">Template: <code id="tbTpl"></code></div>' +
+      '<div class="msec">Description</div>' +
+      '<textarea id="feDesc" rows="4" maxlength="5000" style="width:100%" placeholder="Shown on YouTube and Facebook. Can use the same details.">' + esc(fe.description) + '</textarea>' +
+      '<div class="prev">Insert: ' + TOKENS.map(function (t) { return '<button type="button" class="tok" data-dtok="{' + t[0] + '}">' + t[1] + '</button>'; }).join(' ') + '</div>' +
+      (yt ? '<div class="msec">YouTube</div><div class="fgrid"><label class="fld"><span>Privacy</span><select id="fePriv">' + opts(PRIVACY, fe.privacy) + '</select></label><label class="fld"><span>Category</span><select id="feCat">' + opts(S.categories || [], fe.category) + '</select></label></div>' : '') +
+      '<div class="formerr hide" id="feErr"></div>' +
+      '<div class="set"><div class="sl">' + (fe.id && many ? '<button class="danger" id="feDel">Delete format</button>' : '') + '</div><div class="sc"><button id="feCancel">Cancel</button><button class="on" id="feSave">Save format</button></div></div></div>';
+    drawTrack();
+    $('#feName').oninput = function () { fe.name = this.value; };
+    $('#feDesc').oninput = function () { fe.description = this.value; };
+    if ($('#fePriv')) { $('#fePriv').onchange = function () { fe.privacy = this.value; }; $('#feCat').onchange = function () { fe.category = this.value; }; }
+    $$('[data-dtok]', ed).forEach(function (b) { b.onclick = function () {
+      var t = $('#feDesc'), a = t.selectionStart != null ? t.selectionStart : t.value.length;
+      t.value = t.value.slice(0, a) + b.dataset.dtok + t.value.slice(t.selectionEnd != null ? t.selectionEnd : a); fe.description = t.value; t.focus();
+    }; });
+    $('#feCancel').onclick = function () { fmtEdit = null; paneDirty = false; renderPane(true); };
+    if ($('#feDel')) $('#feDel').onclick = function () { confirmBox('Delete ' + fe.name + '?', 'The format is removed. If it is in use, the first format is used instead.', 'Delete', function () { call('DELETE', 'api/stream/presets/' + fe.id).then(function (r) { if (!r.ok) return toast(r.error); fmtEdit = null; paneDirty = false; toast('Deleted', true); renderPane(true); }); }, true); };
+    $('#feSave').onclick = function () {
+      var title = buildTitle(fe.chips);
+      if (!fe.name.trim()) return feErr('Give the format a name');
+      if (!title) return feErr('Put at least one piece in the title');
+      call('POST', 'api/stream/presets', { id: fe.id || undefined, name: fe.name, info: { title: title, description: fe.description, privacy: fe.privacy, category: fe.category } }).then(function (r) {
+        if (!r.ok) return feErr(r.error);
+        toast('Format saved', true); fmtEdit = null; paneDirty = false; renderPane(true);
+      });
+    };
+    wireBuilder();
+  }
+  function feErr(m) { var e = $('#feErr'); e.textContent = m; e.classList.remove('hide'); }
+  function drawTrack() {
+    var tr = $('#tbTrack'), fe = fmtEdit;
+    tr.innerHTML = fe.chips.length ? fe.chips.map(function (c, i) {
+      return '<span class="tchip k-' + c.k + '" data-i="' + i + '">' + (c.editing ? '<input value="' + esc(c.v) + '" maxlength="60">' : esc(chipLabel(c))) + '<button type="button" class="x" data-x="' + i + '" title="Remove">×</button></span>';
+    }).join('') : '<span class="ph">Drag pieces here</span>';
+    var title = buildTitle(fe.chips);
+    $('#tbPrev').textContent = fillTitle(title, sampleVals()) || '—';
+    $('#tbTpl').textContent = title || '—';
+    var inp = $('input', tr);
+    if (inp) {
+      inp.focus(); inp.select();
+      var done = function () { var i = fe.chips.findIndex(function (c) { return c.editing; }); if (i < 0) return; var v = inp.value.trim(); if (v) { fe.chips[i].v = v; delete fe.chips[i].editing; } else fe.chips.splice(i, 1); drawTrack(); };
+      inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); done(); } if (e.key === 'Escape') { inp.value = fe.chips.find(function (c) { return c.editing; }).v; done(); } };
+      inp.onblur = done;
+      inp.onpointerdown = function (e) { e.stopPropagation(); };
+    }
+  }
+  /** Drag and drop with pointer events, so it works with a mouse, a finger or a Pencil. */
+  function wireBuilder() {
+    var pal = $('#tbPal'), tr = $('#tbTrack'), fe = fmtEdit, drag = null;
+    var newChip = function (spec) { var k = spec[0], v = spec.slice(2); return k === 't' && !v ? { k: 't', v: '', editing: true } : { k: k, v: v }; };
+    var insertAt = function (x, y) {
+      var els = $$('.tchip', tr).filter(function (e) { return !e.classList.contains('dragging'); });
+      for (var i = 0; i < els.length; i++) {
+        var r = els[i].getBoundingClientRect();
+        if (y < r.top - 4) return i;
+        if (y <= r.bottom + 4 && x < r.left + r.width / 2) return i;
+      }
+      return els.length;
+    };
+    var overTrack = function (x, y) { var r = tr.getBoundingClientRect(); return x > r.left - 24 && x < r.right + 24 && y > r.top - 24 && y < r.bottom + 24; };
+    var showCaret = function (idx) {
+      var old = $('.tcaret', tr); if (old) old.remove();
+      if (idx == null) return;
+      var els = $$('.tchip', tr).filter(function (e) { return !e.classList.contains('dragging'); });
+      var c = document.createElement('span'); c.className = 'tcaret';
+      if (idx < els.length) tr.insertBefore(c, els[idx]); else tr.appendChild(c);
+    };
+    var down = function (e) {
+      if (e.button > 0 || e.target.closest('.x') || e.target.tagName === 'INPUT') return;
+      var el = e.target.closest('.tchip'); if (!el) return;
+      drag = { el: el, fromPal: !!el.dataset.add, index: el.dataset.i != null ? Number(el.dataset.i) : null, x0: e.clientX, y0: e.clientY, started: false, pid: e.pointerId };
+      try { el.setPointerCapture(e.pointerId); } catch (x) {}
+    };
+    var move = function (e) {
+      if (!drag || e.pointerId !== drag.pid) return;
+      if (!drag.started) {
+        if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 6) return;
+        drag.started = true;
+        drag.ghost = drag.el.cloneNode(true); drag.ghost.classList.add('tghost');
+        var x = drag.ghost.querySelector('.x'); if (x) x.remove();
+        document.body.appendChild(drag.ghost);
+        if (!drag.fromPal) drag.el.classList.add('dragging');
+      }
+      e.preventDefault();
+      drag.ghost.style.left = e.clientX + 'px'; drag.ghost.style.top = e.clientY + 'px';
+      var over = overTrack(e.clientX, e.clientY);
+      tr.classList.toggle('over', over);
+      showCaret(over ? insertAt(e.clientX, e.clientY) : null);
+    };
+    var up = function (e) {
+      if (!drag || e.pointerId !== drag.pid) return;
+      var d = drag; drag = null;
+      if (d.ghost) d.ghost.remove();
+      tr.classList.remove('over'); showCaret(null);
+      if (!d.started) {
+        // a tap: add from the list, or edit a text piece
+        if (d.fromPal) { fe.chips.push(newChip(d.el.dataset.add)); drawTrack(); }
+        else if (fe.chips[d.index] && fe.chips[d.index].k === 't') { fe.chips[d.index].editing = true; drawTrack(); }
+        return;
+      }
+      var over = overTrack(e.clientX, e.clientY), idx = over ? insertAt(e.clientX, e.clientY) : null;
+      if (d.fromPal) { if (over) fe.chips.splice(idx, 0, newChip(d.el.dataset.add)); }
+      else {
+        var chip = fe.chips.splice(d.index, 1)[0];
+        if (over) fe.chips.splice(idx, 0, chip); // idx was counted without the dragged piece
+      }
+      drawTrack();
+    };
+    [pal, tr].forEach(function (root) {
+      root.addEventListener('pointerdown', down);
+      root.addEventListener('pointermove', move);
+      root.addEventListener('pointerup', up);
+      root.addEventListener('pointercancel', function () { if (drag && drag.ghost) drag.ghost.remove(); if (drag && drag.el) drag.el.classList.remove('dragging'); drag = null; tr.classList.remove('over'); showCaret(null); });
+    });
+    tr.addEventListener('click', function (e) { var x = e.target.closest('[data-x]'); if (x) { fe.chips.splice(Number(x.dataset.x), 1); drawTrack(); } });
+  }
+
   PANES.network = function () {
     var p = S.settings.ports;
     var row = function (k, label, sub) { return set(label, sub, inp(k, p[k], 'num', 'type="number" min="1" max="65535"')); };
-    return '<div class="note pnote">BroadcastRelay uses the server\'s network directly (host networking, needed for NDI), so these ports must not be used by another app on the server. The control page is on port ' + S.ports.control + ' and the web player on ' + S.ports.public + ' (set in the app\'s environment).</div>' +
-      card('Ports', row('srt', 'SRT (UDP)', 'OBS sends here') + row('rtmp', 'RTMP (TCP)', 'OBS sends here') + row('webrtc', 'WHIP / WebRTC (TCP)', 'OBS WHIP and the player\'s WebRTC signaling') + row('ice', 'WebRTC media (UDP)', 'Video to WebRTC viewers') +
+    return '<div class="note pnote">BroadcastRelay uses the server\'s own network (host networking, needed for NDI and WebRTC). This page shows the server\'s network connections, whether each port BroadcastRelay needs is working, and whether the destinations can be reached.</div>' +
+      '<div class="card"><h2>This server</h2><div id="nwIf" class="note">Loading…</div></div>' +
+      '<div class="card"><h2>Ports</h2><div id="nwPorts" class="note">Loading…</div></div>' +
+      '<div class="card"><h2>Can the destinations be reached?</h2><div class="note">Looks up each destination\'s server and opens a connection to it, timing both. Nothing is streamed.</div>' +
+        '<div id="nwReach"></div><div class="set"><div class="sl"><span id="nwBrowser"></span></div><div class="sc"><button class="on" id="nwTest">Test now</button></div></div></div>' +
+      card('Change ports', '<div class="note">Change a port only if another app on the server already uses it. Update OBS afterwards if you change SRT, RTMP or WHIP.</div>' +
+        row('srt', 'SRT (UDP)', 'OBS sends here') + row('rtmp', 'RTMP (TCP)', 'OBS sends here') + row('webrtc', 'WHIP / WebRTC (TCP)', 'OBS WHIP and the player\'s WebRTC signaling') + row('ice', 'WebRTC media (UDP)', 'Video to WebRTC viewers') +
         row('rtsp', 'Internal RTSP (TCP)', 'Only on this server') + row('hls', 'Internal HLS (TCP)', 'Only on this server') + row('api', 'Internal API (TCP)', 'Only on this server'), 'ports', 'Save (restarts the relay)') +
       card('WebRTC from outside', set('Public host names or IPs', 'Only if WebRTC viewers connect from outside your network: the addresses they can reach this server at. Most setups leave this empty (outside viewers use HLS).', inp('publicHosts', S.settings.network.publicHosts, 'wide')), 'network');
+  };
+  var nwTimer = null;
+  PANES.network.wire = function (pEl) {
+    var load = function () {
+      if (pane !== 'network' || tab !== 'setup' || !$('#nwIf')) { clearInterval(nwTimer); return; }
+      call('GET', 'api/network').then(function (r) {
+        if (!r.ok || !$('#nwIf')) return;
+        $('#nwIf').innerHTML = '<table class="hl"><tr><th>Interface</th><th>Address</th><th>Link</th><th>In</th><th>Out</th></tr>' + r.interfaces.map(function (i) {
+          return '<tr><td><b>' + esc(i.name) + '</b><small>' + esc(i.mac || '') + (i.mtu ? ' · MTU ' + i.mtu : '') + '</small></td><td>' + esc(i.ipv4.join(', ') || '–') + (i.ipv6.length ? '<small>' + esc(i.ipv6.join(', ')) + '</small>' : '') + '</td>' +
+            '<td>' + (i.up ? '<span class="g">Up</span>' : '<span class="b">Down</span>') + (i.speedMbps ? '<small>' + (i.speedMbps >= 1000 ? (i.speedMbps / 1000) + ' Gb/s' : i.speedMbps + ' Mb/s') + '</small>' : '') + '</td>' +
+            '<td>' + (i.rxKbps != null ? rate(i.rxKbps) : '–') + '</td><td>' + (i.txKbps != null ? rate(i.txKbps) : '–') + '</td></tr>';
+        }).join('') + '</table><div class="prev" style="margin-top:8px">Name <b>' + esc(r.hostname) + '</b>' + (r.gateway ? ' · Gateway <b>' + esc(r.gateway.ip) + '</b> (' + esc(r.gateway.iface) + ')' : '') + (r.dns.length ? ' · DNS <b>' + esc(r.dns.join(', ')) + '</b>' : '') + '</div>' +
+          (r.tcpStats ? '' : '<div class="note">TCP numbers (RTT, resent) for destinations need the <code>ss</code> tool, which this image doesn\'t have.</div>');
+        var ST_TXT = { ok: '<span class="g">✓ Listening</span>', other: '<span class="b">✗ Used by another program</span>', closed: '<span class="w">Not listening</span>' };
+        $('#nwPorts').innerHTML = (r.mediamtx.portProblem ? '<div class="errbox">The relay could not start: ' + esc(r.mediamtx.portProblem) + '. Change that port below, or stop the other app.</div>' : '') +
+          '<table class="hl"><tr><th>Port</th><th>Used for</th><th>Who connects</th><th>State</th></tr>' + r.ports.map(function (x) {
+            return '<tr><td><b>' + x.port + '</b><small>' + x.proto.toUpperCase() + '</small></td><td>' + esc(x.name) + '</td><td>' + esc(x.who) + '</td><td>' + (ST_TXT[x.state] || x.state) + '</td></tr>';
+          }).join('') + '</table><div class="note" style="margin-top:6px">If OBS can\'t connect while its port shows Listening, a firewall between OBS and the server (e.g. between VLANs) is the likely cause: allow the OBS computer to reach this server on that port.</div>';
+      });
+    };
+    clearInterval(nwTimer); load(); nwTimer = setInterval(load, 2000);
+    $('#nwTest', pEl).onclick = function () {
+      var b = this; b.disabled = true; $('#nwReach').innerHTML = '<div class="note">Testing…</div>';
+      call('POST', 'api/network/test').then(function (r) {
+        b.disabled = false;
+        $('#nwReach').innerHTML = '<table class="hl"><tr><th>Destination</th><th>Server</th><th>Name lookup</th><th>Connect</th><th>Result</th></tr>' + (r.results || []).map(function (x) {
+          return '<tr><td><b>' + esc(x.label) + '</b></td><td>' + esc(x.host) + (x.port ? ':' + x.port : '') + '</td><td>' + (x.dnsMs != null ? x.dnsMs + ' ms' : '–') + '</td><td>' + (x.connectMs != null ? '<span class="' + q(x.connectMs, 150, 400) + '">' + x.connectMs + ' ms</span>' : '–') + '</td>' +
+            '<td>' + (x.ok ? '<span class="g">✓ Reachable</span>' : '<span class="b">✗ ' + esc(x.error || 'Failed') + '</span>') + (x.note ? '<small>' + esc(x.note) + '</small>' : '') + '</td></tr>';
+        }).join('') + '</table>';
+      });
+      // and from this browser to the web player port
+      var t0 = performance.now(), url = location.protocol + '//' + location.hostname + ':' + S.ports.public + '/player.json';
+      fetch(url, { mode: 'no-cors', cache: 'no-store' }).then(function () { $('#nwBrowser').innerHTML = 'From this browser to the web player (port ' + S.ports.public + '): <span class="g">✓ ' + Math.round(performance.now() - t0) + ' ms</span>'; })
+        .catch(function () { $('#nwBrowser').innerHTML = 'From this browser to the web player (port ' + S.ports.public + '): <span class="b">✗ not reachable</span>'; });
+    };
   };
   PANES.network.prep = function (s, v) { if (s === 'network') v.publicUrl = S.settings.network.publicUrl; return v; };
 

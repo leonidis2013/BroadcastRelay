@@ -33,6 +33,7 @@ const Auth = require('./lib/auth.js');
 const Secrets = require('./lib/secrets.js');
 const Sys = require('./lib/sys.js');
 const Demo = require('./lib/demo.js');
+const Net = require('./lib/netinfo.js');
 const pkg = require('./package.json');
 
 const args = process.argv.slice(2);
@@ -59,7 +60,7 @@ const DEFAULTS = {
   ports: Object.assign({}, MediaMTX.DEFAULT_PORTS),
   network: { publicHosts: '', publicUrl: '' },
   // what the stream is called, shared by every destination (one can use its own instead)
-  stream: { title: '{weekday} Service - {date}', sermon: '', speaker: '', speakers: [], description: '', privacy: 'public', category: '', presets: [], presetId: '' },
+  stream: { title: '{weekday} Service - {date}', sermon: '', speaker: '', speakers: [], series: '', seriesList: [], part: 0, autoPart: true, description: '', privacy: 'public', category: '', presets: [], presetId: '' },
   destinations: [],
   web: { enabled: true, mode: 'encode', height: 720, fps: 0, bitrate: 0, preset: 'veryfast', audioBitrate: 160, title: 'Live', offlineText: 'The stream will start soon.' },
   ndi: { discoveryServer: '', extraIps: '', groups: '' },
@@ -104,6 +105,14 @@ let cfg = clone(DEFAULTS);
   }
   if (!Array.isArray(cfg.stream.presets)) cfg.stream.presets = [];
   if (!Array.isArray(cfg.stream.speakers)) cfg.stream.speakers = [];
+  if (!Array.isArray(cfg.stream.seriesList)) cfg.stream.seriesList = [];
+  // 0.5.0: presets became title formats, and one is always selected
+  if (!cfg.stream.presets.length) cfg.stream.presets.push({ id: crypto.randomBytes(4).toString('hex'), name: 'Service', title: cfg.stream.title, description: cfg.stream.description, privacy: cfg.stream.privacy, category: cfg.stream.category });
+  if (!cfg.stream.presets.some((p) => p.id === cfg.stream.presetId)) {
+    const same = cfg.stream.presets.find((p) => p.title === cfg.stream.title);
+    cfg.stream.presetId = (same || cfg.stream.presets[0]).id;
+    if (!same) cfg.stream.title = cfg.stream.presets[0].title;
+  }
   // 0.3.0: the fixed NDI output became a destination type
   if (saved.ndiOut && (saved.ndiOut.enabled || (saved.ndiOut.name && saved.ndiOut.name !== 'Program')) && !cfg.destinations.some((d) => d.type === 'ndi')) {
     cfg.destinations.push({ id: crypto.randomBytes(4).toString('hex'), name: String(saved.ndiOut.name || 'Program').replace(/[()]/g, '') || 'Program', type: 'ndi', armed: true, connect: 'key', url: '', key: '', useShared: true, title: '', description: '', privacy: 'public',
@@ -152,6 +161,11 @@ const rid = () => crypto.randomBytes(4).toString('hex');
 const rtsp = (p) => 'rtsp://127.0.0.1:' + cfg.ports.rtsp + '/' + p;
 const dest = (id) => cfg.destinations.find((d) => d.id === id);
 
+/** "Part 3", or nothing when there is no part number. */
+function partText() { const n = Number(cfg.stream && cfg.stream.part) || 0; return n > 0 ? 'Part ' + n : ''; }
+/** "Series, Part 3" for the web player. */
+function seriesLine() { return [cfg.stream.series, partText()].filter(Boolean).join(', '); }
+
 function formatTitle(t) {
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -159,6 +173,7 @@ function formatTitle(t) {
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   return String(t || '').replace(/\{date\}/g, date).replace(/\{time\}/g, time).replace(/\{weekday\}/g, weekday)
     .replace(/\{sermon\}/g, (cfg.stream && cfg.stream.sermon) || '').replace(/\{speaker\}/g, (cfg.stream && cfg.stream.speaker) || '')
+    .replace(/\{series\}/g, (cfg.stream && cfg.stream.series) || '').replace(/\{part\}/g, partText())
     // tidy what an empty {sermon} or {speaker} leaves behind: "A -  - B", "A -", "- B", "A with"
     .replace(/\s+(with|by|featuring|feat\.)\s*$/i, ' ')
     .replace(/(\s*[-–—|·:]\s*)(?:[-–—|·:]\s*)+/g, '$1')
@@ -180,6 +195,15 @@ const feed = { ready: false, sourceId: null, path: { ready: false }, info: null,
 
 const mtx = MediaMTX.create({ bin: BIN.mediamtx, dataDir: DATA, recordDir: RECORD_DIR, settings: () => cfg });
 if (DEMO) { mtx.proc.o.spawn = spawnFn; mtx.pathInfo = async (n) => Demo.pathInfo(n, cfg.input.source === 'ndi' && ndi.ingest.info().state === 'live'); mtx.connStats = async () => Demo.connStats(); }
+
+// ---------- event log: connects, drops, reconnects, errors (newest last, last 300) ----------
+const events = [];
+function logEvent(level, who, what) {
+  const e = { t: Date.now(), level, who, what: String(what || '').slice(0, 300) };
+  events.push(e);
+  if (events.length > 300) events.shift();
+  broadcast('log', e);
+}
 
 let lastLevels = null, levelsSentAt = 0;
 
@@ -243,6 +267,15 @@ function run(id) {
       if (DEMO) for (const x of r.proc.procs) x.o.spawn = spawnFn;
     } else r.proc = new Proc({ name: 'Destination ' + id, cmd: BIN.ffmpeg, progress: true, spawn: spawnFn, args: () => destArgs(id) });
     r.proc.on('state', pushStatusSoon);
+    r.drops = 0; r.lastState = 'off';
+    r.proc.on('state', (st) => {
+      if (st === r.lastState) return;
+      const d = dest(id), name = d ? d.name : id, was = r.lastState;
+      r.lastState = st;
+      if (st === 'live') logEvent('ok', name, was === 'retrying' ? 'Reconnected' : 'Connected');
+      else if (st === 'retrying') { r.drops++; logEvent('bad', name, 'Dropped: ' + (r.proc.error || 'connection lost') + ' — retrying'); }
+      else if (st === 'error') logEvent('bad', name, 'Stopped: ' + (r.proc.error || 'error'));
+    });
     runs.set(id, r);
   }
   return r;
@@ -319,6 +352,7 @@ async function startDest(id) {
     r.want = true;
   }
   if (feed.ready && feed.info) r.proc.start();
+  logEvent('info', d.name, feed.ready ? 'Started' : 'Started, waiting for the input');
   pushStatus();
   return { ok: true };
 }
@@ -334,6 +368,7 @@ async function endBroadcast(d, r) {
 async function stopDest(id) {
   const d = dest(id), r = runs.get(id);
   if (!r) return { ok: true };
+  if (r.want && d) logEvent('info', d.name, 'Stopped');
   r.want = false;
   r.proc.stop();
   if (d && r.session) await endBroadcast(d, r);
@@ -355,6 +390,7 @@ function destState(d) {
   const pids = p.pids || (p.pid ? [p.pid] : []);
   return {
     state: st, error: r.error || (r.want ? p.error : ''), since: p.since, retryIn: p.retryIn,
+    drops: r.drops || 0, tcp: st === 'live' ? r.tcp || null : null,
     stats: p.stats, cpu: pids.length ? pids.reduce((a, x) => a + (sys.pidPct(x) || 0), 0) : null, tail: p.tail,
     receivers: d.type === 'ndi' ? p.connections : undefined,
     desc, reasons: plan ? plan.reasons : [],
@@ -488,11 +524,15 @@ async function tick() {
     const p = await mtx.pathInfo('live');
     feed.path = p;
     if (p.ready && (!feed.ready || p.sourceId !== feed.sourceId)) {
+      if (feed.everUp) feed.reconnects = (feed.reconnects || 0) + 1;
+      feed.everUp = true;
       feed.ready = true; feed.sourceId = p.sourceId; feed.since = p.since || Date.now();
       feed.lastBytes = null;
+      logEvent('ok', 'Input', 'Connected' + (p.protocol ? ' (' + (cfg.input.source === 'ndi' && p.sourceType === 'rtspSession' ? 'NDI' : p.protocol) + ')' : ''));
       onInputUp();
     } else if (!p.ready && feed.ready) {
-      feed.ready = false; feed.sourceId = null;
+      feed.ready = false; feed.sourceId = null; feed.lastDrop = Date.now();
+      logEvent('bad', 'Input', 'Disconnected');
       onInputDown();
     }
     if (feed.ready) {
@@ -504,7 +544,66 @@ async function tick() {
     [webPath, webrtcPath] = await Promise.all([mtx.pathInfo('web'), mtx.pathInfo('webrtc')]);
     if (webrtcViewers.size) await refreshWebrtc();
   }
+  ifaces.sample();
+  if (++tickN % 2 === 0) await refreshTcp();
+  addBitrate();
+  checkSession();
   pushStatus();
+}
+
+// ---------- TCP health of outgoing RTMP connections (from ss) ----------
+let tickN = 0;
+const ifaces = Net.createIfaceMeter();
+async function refreshTcp() {
+  const live = [...runs.entries()].filter(([, r]) => r.proc.pid && r.proc.state === 'live' && !r.proc.procs);
+  if (!live.length) return;
+  const socks = DEMO ? Demo.tcp(live.map(([, r]) => r.proc.pid)) : await Net.tcpStats();
+  if (!socks) return;
+  for (const [, r] of live) {
+    // the connection that carries the stream is the one that has sent the most
+    const s = socks.filter((x) => x.pid === r.proc.pid).sort((a, b) => (b.bytesSent || 0) - (a.bytesSent || 0))[0];
+    if (!s) { r.tcp = null; continue; }
+    const prev = r.tcpPrev;
+    let retransPct = null;
+    if (prev && s.bytesSent > prev.bytesSent) retransPct = Math.round(1000 * Math.max(0, (s.bytesRetrans || 0) - (prev.bytesRetrans || 0)) / (s.bytesSent - prev.bytesSent)) / 10;
+    r.tcpPrev = { bytesSent: s.bytesSent || 0, bytesRetrans: s.bytesRetrans || 0 };
+    r.tcp = { peer: s.peer, rtt: s.rtt != null ? Math.round(s.rtt) : null, jitter: s.rttVar != null ? Math.round(s.rttVar) : null, retransPct, retrans: s.retrans || 0, sendKbps: s.sendKbps, cwnd: s.cwnd };
+  }
+}
+
+// ---------- bitrate history: one point per second, the last hour ----------
+const bitrates = [];
+function addBitrate() {
+  const t = Math.floor(Date.now() / 1000);
+  if (bitrates.length && bitrates[bitrates.length - 1][0] === t) return;
+  const d = {};
+  for (const x of cfg.destinations) {
+    if (x.type === 'ndi') continue; // NDI stays on the local network
+    const r = runs.get(x.id);
+    if (r && r.proc.state === 'live' && r.proc.stats && r.proc.stats.kbps != null) d[x.id] = Math.round(r.proc.stats.kbps);
+  }
+  const w = viewers(webrtcPath.readers || 0).kbps;
+  bitrates.push([t, feed.ready && feed.kbps != null ? feed.kbps : null, w || 0, d]);
+  while (bitrates.length && bitrates[0][0] <= t - HISTORY_SECONDS) bitrates.shift();
+}
+
+// ---------- the part number counts up after each stream ----------
+const session = { since: null };
+// how long a stream must run before the part counts up (BR_MIN_SESSION_MS is for the tests)
+const MIN_SESSION_MS = Number(process.env.BR_MIN_SESSION_MS) || 10 * 60e3;
+function checkSession() {
+  const anyLive = [...runs.values()].some((r) => r.want && r.proc.state === 'live');
+  if (anyLive && !session.since) session.since = Date.now();
+  const anyWanted = [...runs.values()].some((r) => r.want || r.phase);
+  if (!anyWanted && session.since) {
+    const long = Date.now() - session.since > MIN_SESSION_MS; // a real service, not a quick test
+    session.since = null;
+    if (long && cfg.stream.autoPart !== false && cfg.stream.series && Number(cfg.stream.part) > 0) {
+      cfg.stream.part = Number(cfg.stream.part) + 1;
+      saveCfg(); pushState();
+      logEvent('info', 'Stream info', cfg.stream.series + ': next time is Part ' + cfg.stream.part);
+    }
+  }
 }
 
 function status() {
@@ -525,6 +624,8 @@ function status() {
       ready: feed.ready, probing: feed.probing, since: feed.ready ? feed.since : null,
       protocol: cfg.input.source === 'ndi' && feed.path.sourceType === 'rtspSession' ? 'NDI' : feed.path.protocol || null,
       remote: feed.conn ? feed.conn.remote : null, rtt: feed.conn ? feed.conn.rtt : null, lossPct: feed.conn ? feed.conn.lossPct : null,
+      link: feed.conn ? { retrans: feed.conn.retrans, lost: feed.conn.lost, dropped: feed.conn.dropped, packets: feed.conn.packets, linkMbps: feed.conn.linkMbps, bufMs: feed.conn.bufMs } : null,
+      reconnects: feed.reconnects || 0, lastDrop: feed.lastDrop || null,
       kbps: feed.kbps,
       video: feed.ready ? { codec: inf.videoCodec || feed.path.videoCodec, width: inf.width, height: inf.height, fps: inf.fps, profile: inf.videoProfile } : null,
       audio: feed.ready && (inf.audioCodec || feed.path.audioCodec) ? { codec: inf.audioCodec || feed.path.audioCodec, rate: inf.audioRate, channels: inf.audioChannels, kbps: inf.audioKbps } : null,
@@ -562,7 +663,8 @@ function appState() {
     ndi: { available: ndi.available(), why: ndi.whyNot() },
     cpuModel: sys.cpuModel(),
     categories: YouTube.CATEGORIES,
-    status: status()
+    status: status(),
+    events: events.slice(-100)
   };
 }
 
@@ -707,23 +809,30 @@ function findPreset(ref) {
 }
 /** Change the shared info (and which preset it came from), save, and update live broadcasts. */
 async function setStreamInfo(v, presetId) {
+  v = Object.assign({}, v || {});
+  // choosing a format fills in its title, privacy and category (and description unless one is given)
+  const fmt = presetId ? cfg.stream.presets.find((p) => p.id === presetId) : null;
+  if (fmt) {
+    Object.assign(v, { title: fmt.title, privacy: fmt.privacy, category: fmt.category });
+    if (v.description === undefined) v.description = fmt.description || '';
+  }
   const next = normInfo(v, cfg.stream);
   if (!next.title) return { ok: false, error: 'The title can\'t be empty' };
   const sermon = v && v.sermon !== undefined ? str(v.sermon, 120) : cfg.stream.sermon || '';
   const speaker = v && v.speaker !== undefined ? str(v.speaker, 80) : cfg.stream.speaker || '';
-  const sermonChanged = sermon !== (cfg.stream.sermon || '') || speaker !== (cfg.stream.speaker || '');
+  const series = v.series !== undefined ? str(v.series, 80) : cfg.stream.series || '';
+  const part = v.part !== undefined ? int(v.part, 0, 999, 0) : Number(cfg.stream.part) || 0;
+  const autoPart = v.autoPart !== undefined ? !!v.autoPart : cfg.stream.autoPart !== false;
+  const sermonChanged = sermon !== (cfg.stream.sermon || '') || speaker !== (cfg.stream.speaker || '') || series !== (cfg.stream.series || '') || part !== (Number(cfg.stream.part) || 0);
+  if (series) cfg.stream.seriesList = [series].concat((cfg.stream.seriesList || []).filter((x) => x.toLowerCase() !== series.toLowerCase())).slice(0, 25);
   // remember the speakers used, newest first, for the pick list
   if (speaker) cfg.stream.speakers = [speaker].concat((cfg.stream.speakers || []).filter((x) => x.toLowerCase() !== speaker.toLowerCase())).slice(0, 25);
   const changed = ['title', 'description', 'privacy', 'category'].some((k) => next[k] !== cfg.stream[k]);
-  Object.assign(cfg.stream, next, { sermon, speaker });
-  if (presetId !== undefined) cfg.stream.presetId = presetId;
-  else if (changed) {
-    const p = cfg.stream.presets.find((x) => x.id === cfg.stream.presetId);
-    if (p && ['title', 'description', 'privacy', 'category'].some((k) => p[k] !== next[k])) cfg.stream.presetId = '';
-  }
+  Object.assign(cfg.stream, next, { sermon, speaker, series, part, autoPart });
+  if (fmt) cfg.stream.presetId = fmt.id;
   saveCfg(); pushState();
   // a new sermon or speaker only matters to YouTube/Facebook when the title or description uses it
-  const usesSermon = /\{(sermon|speaker)\}/.test(cfg.stream.title + cfg.stream.description);
+  const usesSermon = /\{(sermon|speaker|series|part)\}/.test(cfg.stream.title + cfg.stream.description);
   if (!changed && !(sermonChanged && usesSermon)) return { ok: true, updated: [] };
   const res = await pushInfo(true);
   const bad = res.filter((x) => !x.ok);
@@ -731,25 +840,38 @@ async function setStreamInfo(v, presetId) {
 }
 function savePreset(b) {
   const name = str(b.name, 40);
-  if (!name) return { ok: false, error: 'Give the preset a name' };
+  if (!name) return { ok: false, error: 'Give the format a name' };
   const info = normInfo(b.info || cfg.stream, {});
   if (!info.title) return { ok: false, error: 'The title can\'t be empty' };
   let p = b.id ? cfg.stream.presets.find((x) => x.id === b.id) : null;
   if (b.id && !p) return { ok: false, error: 'Unknown preset' };
   const clash = cfg.stream.presets.find((x) => x.name.toLowerCase() === name.toLowerCase() && x !== p);
-  if (clash) return { ok: false, error: 'There is already a preset called ' + clash.name };
-  if (!p) { if (cfg.stream.presets.length >= 50) return { ok: false, error: 'At most 50 presets' }; p = { id: rid() }; cfg.stream.presets.push(p); }
+  if (clash) return { ok: false, error: 'There is already a format called ' + clash.name };
+  if (!p) { if (cfg.stream.presets.length >= 50) return { ok: false, error: 'At most 50 formats' }; p = { id: rid() }; cfg.stream.presets.push(p); }
+  const oldDesc = p.description;
   Object.assign(p, { name }, info);
-  cfg.stream.presetId = p.id;
-  saveCfg(); pushState();
+  if (cfg.stream.presetId === p.id) {
+    // the format in use changed: take its title, privacy and category; keep a description typed for this week
+    const keepDesc = cfg.stream.description !== (oldDesc || '');
+    setStreamInfo({ description: keepDesc ? cfg.stream.description : p.description }, p.id);
+  } else { saveCfg(); pushState(); }
   return { ok: true, id: p.id };
 }
 function deletePreset(id) {
+  if (cfg.stream.presets.length <= 1) return { ok: false, error: 'Keep at least one format' };
   const before = cfg.stream.presets.length;
   cfg.stream.presets = cfg.stream.presets.filter((p) => p.id !== id);
-  if (cfg.stream.presetId === id) cfg.stream.presetId = '';
+  if (cfg.stream.presets.length === before) return { ok: false, error: 'Unknown format' };
+  if (cfg.stream.presetId === id) setStreamInfo({}, cfg.stream.presets[0].id);
+  else { saveCfg(); pushState(); }
+  return { ok: true };
+}
+function movePreset(id, dir) {
+  const ps = cfg.stream.presets, i = ps.findIndex((p) => p.id === id), j = i + (dir < 0 ? -1 : 1);
+  if (i < 0 || j < 0 || j >= ps.length) return { ok: true };
+  [ps[i], ps[j]] = [ps[j], ps[i]];
   saveCfg(); pushState();
-  return { ok: cfg.stream.presets.length < before };
+  return { ok: true };
 }
 
 // ---------- actions (shared by the page and the Companion API) ----------
@@ -784,7 +906,11 @@ async function action(parts, method, body) {
   if (method !== 'POST') return { status: 405, ok: false, error: 'Use POST' };
   if (a === 'golive') return goLive();
   // POST /stream {title, description, privacy, category}: change the shared stream info
-  if (a === 'stream' && !b) return setStreamInfo(body);
+  if (a === 'stream' && !b) {
+    // {"format": "<name, id or number>"} switches format too
+    if (body.format !== undefined) { const f = findPreset(String(body.format)); if (!f) return { status: 404, ok: false, error: 'No format "' + body.format + '"' }; return setStreamInfo(body, f.id); }
+    return setStreamInfo(body);
+  }
   // POST /stream/preset/<name, id or number>: load a preset
   if (a === 'stream' && b === 'preset' && c) {
     const p = findPreset(c);
@@ -835,6 +961,8 @@ function compactStatus() {
     stream_preset: (cfg.stream.presets.find((p) => p.id === cfg.stream.presetId) || {}).name || '',
     stream_sermon: cfg.stream.sermon || '',
     stream_speaker: cfg.stream.speaker || '',
+    stream_series: cfg.stream.series || '',
+    stream_part: Number(cfg.stream.part) || 0,
     cpu: s.cpu.total,
     destinations: {}
   };
@@ -843,6 +971,59 @@ function compactStatus() {
     out.destinations[d.id] = { name: d.name, index: i + 1, state: st.state, live: st.state === 'live', kbps: st.stats && st.stats.kbps ? Math.round(st.stats.kbps) : 0, error: st.error || '' };
   });
   return out;
+}
+
+// ---------- network page ----------
+const PORT_INFO = [
+  ['control', 'tcp', 'Control page', 'This page'], ['public', 'tcp', 'Web player', 'Viewers (publish this one)'],
+  ['srt', 'udp', 'SRT in', 'OBS'], ['rtmp', 'tcp', 'RTMP in', 'OBS'], ['webrtc', 'tcp', 'WHIP / WebRTC signaling', 'OBS (WHIP), web player'],
+  ['ice', 'udp', 'WebRTC media', 'Web player (LAN)'], ['rtsp', 'tcp', 'Internal RTSP', 'This server only'], ['hls', 'tcp', 'Internal HLS', 'This server only'], ['api', 'tcp', 'Internal API', 'This server only']
+];
+function networkInfo() {
+  const L = Net.listeners();
+  const ours = new Set([...Net.socketInodes(process.pid), ...Net.socketInodes(mtx.proc.pid)]);
+  const portOf = (k) => (k === 'control' ? PORT : k === 'public' ? PUBLIC_PORT : cfg.ports[k]);
+  const ports = PORT_INFO.map(([k, proto, name, who]) => {
+    const port = portOf(k), e = L.get(port), inodes = e ? e[proto] : [];
+    let state = 'closed';
+    if (DEMO) state = 'ok';
+    else if (inodes.some((i) => ours.has(i))) state = 'ok';
+    else if (inodes.length) state = 'other';
+    return { key: k, port, proto, name, who, state, editable: !['control', 'public'].includes(k) };
+  });
+  const inUse = /address already in use|bind: /i.test(mtx.proc.error || '') ? mtx.proc.error : '';
+  return { interfaces: ifaces.list(), gateway: Net.gateway(), dns: Net.nameservers(), hostname: os.hostname(), ports, mediamtx: { state: mtx.proc.state, error: mtx.proc.error, portProblem: inUse }, publicHosts: cfg.network.publicHosts, tcpStats: !DEMO && Net.tcpStatsAvailable ? Net.tcpStatsAvailable() : true };
+}
+async function reachTest() {
+  const targets = [];
+  const seen = new Set();
+  const add = (label, url, note) => {
+    const hp = Net.hostPort(url);
+    if (!hp || !hp.host) return;
+    const key = hp.host + ':' + hp.port;
+    if (seen.has(key)) return;
+    seen.add(key); targets.push({ label, url, hp, note });
+  };
+  for (const d of cfg.destinations) {
+    if (d.type === 'ndi') continue;
+    const r = runs.get(d.id);
+    const url = d.connect === 'api' ? (r && r.session ? r.session.url : F.PLATFORM_URLS[d.type]) : (String(d.url || '').trim() || F.PLATFORM_URLS[d.type]);
+    if (url) add(d.name, url);
+  }
+  if (cfg.youtube.refreshToken) add('YouTube API', 'https://www.googleapis.com/');
+  if (cfg.facebook.pageToken) add('Facebook API', 'https://graph.facebook.com/');
+  if (!targets.length) add('Internet', 'https://www.google.com/');
+  return Promise.all(targets.map(async (x) => {
+    if (DEMO) return { label: x.label, host: x.hp.host, port: x.hp.port, ok: true, dnsMs: 4, connectMs: 18 + Math.round(Math.random() * 10) };
+    if (x.hp.udp) {
+      // SRT is UDP: nothing to connect to without sending a stream, so only check the name
+      const r = await Net.reach(x.hp.host, 1, 1500).catch(() => null);
+      const dnsOk = r && (r.address || r.ok);
+      return { label: x.label, host: x.hp.host, port: x.hp.port, ok: !!dnsOk, udp: true, dnsMs: r && r.dnsMs, error: dnsOk ? '' : (r && r.error) || 'Name not found', note: 'SRT (UDP): name checked only' };
+    }
+    const r = await Net.reach(x.hp.host, x.hp.port);
+    return Object.assign({ label: x.label }, r);
+  }));
 }
 
 // ---------- HTTP ----------
@@ -901,7 +1082,7 @@ function playerRoutes(req, res, u, isPublic) {
   const p = u.pathname;
   if (req.method === 'GET' && ((isPublic && p === '/') || p === '/watch' || p === '/embed')) return serveFile(res, path.join(__dirname, 'public', 'watch.html'), p === '/embed' ? {} : { 'x-frame-options': 'SAMEORIGIN' }), true;
   if (req.method === 'GET' && p === '/player.json') {
-    send(res, 200, { title: infoFor({}).title, sermon: cfg.stream.sermon || '', speaker: cfg.stream.speaker || '', offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
+    send(res, 200, { title: infoFor({}).title, sermon: cfg.stream.sermon || '', speaker: cfg.stream.speaker || '', series: seriesLine(), offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
     return true;
   }
   if (req.method === 'GET' && p.startsWith('/vendor/') && /^\/vendor\/[\w.-]+\.js$/.test(p)) return serveFile(res, path.join(__dirname, 'public', p)), true;
@@ -1048,11 +1229,25 @@ async function controlHandler(req, res) {
       saveCfg(); pushState();
       return send(res, 200, { ok: true });
     }
+    if ((m = /^\/api\/stream\/presets\/([\w-]+)\/move$/.exec(p)) && req.method === 'POST') { const b = await readBody(req); return send(res, 200, movePreset(m[1], Number(b.dir))); }
+    if (p === '/api/stream/series/forget' && req.method === 'POST') {
+      const b = await readBody(req), n = String(b.name || '').toLowerCase();
+      cfg.stream.seriesList = (cfg.stream.seriesList || []).filter((x) => x.toLowerCase() !== n);
+      saveCfg(); pushState();
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/bitrate/history' && req.method === 'GET') {
+      const from = Math.floor(Date.now() / 1000) - int(u.searchParams.get('seconds'), 10, HISTORY_SECONDS, 600);
+      return send(res, 200, { ok: true, points: bitrates.filter((b) => b[0] > from) });
+    }
+    if (p === '/api/events/log' && req.method === 'GET') return send(res, 200, { ok: true, events });
+    if (p === '/api/network' && req.method === 'GET') return send(res, 200, Object.assign({ ok: true }, networkInfo()));
+    if (p === '/api/network/test' && req.method === 'POST') return send(res, 200, { ok: true, results: await reachTest() });
     if (p === '/api/stream/presets' && req.method === 'POST') {
       const r = savePreset(await readBody(req));
       return send(res, r.ok ? 200 : 400, r);
     }
-    if ((m = /^\/api\/stream\/presets\/([\w-]+)$/.exec(p)) && req.method === 'DELETE') return send(res, 200, deletePreset(m[1]));
+    if ((m = /^\/api\/stream\/presets\/([\w-]+)$/.exec(p)) && req.method === 'DELETE') { const r = deletePreset(m[1]); return send(res, r.ok ? 200 : 400, r); }
     if (p === '/api/levels/history' && req.method === 'GET') return send(res, 200, { ok: true, now: Math.floor(Date.now() / 1000), points: historySince(int(u.searchParams.get('seconds'), 10, HISTORY_SECONDS, 600)) });
     if (p === '/api/viewers' && req.method === 'GET') {
       const list = viewerList();

@@ -46,7 +46,7 @@ The container uses **host networking** (NDI discovery and WebRTC need the server
 | 8189/udp | WebRTC media to LAN viewers |
 | 8554, 8888, 9997 | Internal only (127.0.0.1) |
 
-`PORT` and `PUBLIC_PORT` are set in the app's environment; the rest on **Settings › Ports**.
+`PORT` and `PUBLIC_PORT` are set in the app's environment; the rest on **Settings › Network**.
 
 Elsewhere: `docker compose up -d` with [`docker-compose.yml`](docker-compose.yml).
 
@@ -62,12 +62,16 @@ Send what your best destination needs at a generous bitrate, and let BroadcastRe
 
 ## Stream info
 
-One place for what the stream is called: **title, sermon, description**, plus **YouTube privacy and category** when you have a YouTube destination. Shared by the web player and every YouTube and Facebook destination connected by account. The title can use `{weekday}`, `{date}`, `{time}`, `{sermon}` and `{speaker}`; if the sermon or speaker is empty, the leftover dash or "with" is dropped ("Sunday - {sermon} - {speaker}" with no sermon reads "Sunday - Pastor John").
+What the stream is called is split in two:
 
-- **Sermon and speaker**: shown under the title in the web player (and on its waiting screen) as "Sermon · Speaker". They aren't saved in presets, so they can change every week while the preset stays the same. Speakers you've used are remembered and offered as a pick list.
+- **Title formats** (Settings › Title formats) say how a title is put together, e.g. *Sunday Service - Romans, Part 3*. Build them by dragging pieces into the title: Weekday, Date, Time, Series, Part, Sermon, Speaker, your own text and separators (` - `, ` | `, ` · `, `: `, `, `). Drag to reorder, drag out or tap × to remove; works with a mouse or a finger. A format also holds the description (which can use the same pieces) and, when you have a YouTube destination, the privacy and category.
+- The **Stream info card** on the main page is for this week: pick a format and fill in **series, part, sermon and speaker** (series and speakers you've used are offered as a pick list). The title preview updates as you type; nothing changes until you press Save.
 
-- **Presets**: save the details as e.g. *Sunday Service*, *Wednesday Night*, *Funeral*, and load one from the card's *Load preset* menu (or from Companion).
-- **While live**: saving, or loading a preset, updates the title and description of the running YouTube and Facebook broadcasts right away.
+The details are shared by the web player and every YouTube and Facebook destination connected by account. In the template they're `{weekday}`, `{date}`, `{time}`, `{series}`, `{part}` ("Part 3"), `{sermon}` and `{speaker}`. An empty piece takes its separator with it ("Sunday - {sermon} - {speaker}" with no sermon reads "Sunday - Pastor John"), and Part 0 means no part.
+
+- **Part counts up**: with *Count up after each stream* ticked and a series set, the part goes up by one when a stream of more than 10 minutes ends (Part 3 today, Part 4 next week). Short tests don't count.
+- **Web player**: shows "Romans, Part 3 · Sermon · Speaker" under the title (leaving out whatever the title already says).
+- **While live**: saving, or switching format, updates the title and description of the running YouTube and Facebook broadcasts right away.
 - **Its own title**: a destination can be set to use its own title and description instead (Edit › Title and description › Its own).
 - Destinations that use a **stream key** can't be given a title from outside; they keep whatever is set on YouTube or Facebook.
 
@@ -118,6 +122,16 @@ Go live creates a live video on the Page with the Stream info title and descript
 
 Under the meters, a graph of the last 1, 5, 10 (default), 30 or 60 minutes: short-term loudness as a line, momentary as a shaded area, the −16…−14 LUFS streaming target as a band, and a red mark wherever the true peak went above −1 dBTP. BroadcastRelay keeps the last hour, so reloading the page doesn't lose it.
 
+## Network
+
+The **Network** card on the main page shows:
+
+- **Bitrate graph**: the input, each destination, the web viewers and the total going out, over the last 1, 5, 10, 30 or 60 minutes.
+- **Connection health**: for the input (SRT gives round-trip time, loss, resent packets, link capacity and reconnects) and each destination (round-trip time and % resent of its TCP connection, encoder speed, drops). Yellow and red mark numbers to keep an eye on: round-trip time over 150/400 ms, more than 1%/5% resent, encoder speed under 0.98×/0.93×.
+- **Recent events**: inputs and destinations connecting, dropping and reconnecting, with the full list under *All events*.
+
+**Settings › Network** shows the server's interfaces (addresses, link speed, live traffic), gateway and DNS, whether each port BroadcastRelay needs is listening or taken by another program, and a test that checks each destination's server can be looked up and connected to.
+
 ## Recording
 
 The raw input is recorded exactly as it arrived, in fragmented MP4 segments (30 minutes by default) under `/recordings/live/`. Fragmented MP4 is playable even if the power fails mid-recording. Files older than the *keep* days are deleted, and an optional size limit deletes the oldest first. The **Files** button lists, downloads and deletes them.
@@ -134,9 +148,9 @@ Use a **Generic HTTP** connection. Every request needs the token from **Settings
 | `POST /api/v1/web/toggle` | also `start`, `stop` |
 | `POST /api/v1/recording/toggle` | also `on`, `off` |
 | `POST /api/v1/input/source/ndi` | or `stream` |
-| `POST /api/v1/stream/preset/<name, id or number>` | Load a Stream info preset (updates live broadcasts) |
-| `POST /api/v1/stream` | Set Stream info; JSON body `{"title": "…", "description": "…", "privacy": "public", "category": "29"}` |
-| `GET /api/v1/status` | `any_live`, `input_live`, `input_kbps`, `recording`, `web_viewers`, `stream_title`, `stream_preset`, `loudness_short`, `cpu`, `destinations.<id>.live`… |
+| `POST /api/v1/stream/preset/<name, id or number>` | Switch title format (updates live broadcasts) |
+| `POST /api/v1/stream` | Set Stream info; JSON body with any of `{"format": "Sunday Service", "series": "Romans", "part": 3, "sermon": "…", "speaker": "…", "description": "…"}` |
+| `GET /api/v1/status` | `any_live`, `input_live`, `input_kbps`, `recording`, `web_viewers`, `stream_title`, `stream_preset` (format), `stream_series`, `stream_part`, `loudness_short`, `cpu`, `destinations.<id>.live`… |
 
 ## Environment
 

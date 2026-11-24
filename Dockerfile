@@ -27,8 +27,9 @@ ARG MEDIAMTX_VERSION
 ARG HLSJS_VERSION
 
 # ffmpeg: the encoders and meters. avahi + dbus: NDI discovery (mDNS). util-linux has setpriv.
+# iproute2 (ss): TCP round-trip time and retransmits of the outgoing connections.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg ca-certificates curl tzdata avahi-daemon libavahi-client3 dbus util-linux \
+      ffmpeg ca-certificates curl tzdata avahi-daemon libavahi-client3 dbus util-linux iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

@@ -106,9 +106,9 @@
   function poll() {
     fetch(base() + '/player.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       info = j;
-      // sermon · speaker, leaving out whatever the title already says
+      // series · sermon · speaker, leaving out whatever the title already says
       var tl = String(j.title || '').toLowerCase();
-      var byline = [j.sermon, j.speaker].filter(function (x) { return x && tl.indexOf(String(x).toLowerCase()) < 0; }).join(' · ');
+      var byline = [j.series, j.sermon, j.speaker].filter(function (x) { return x && tl.indexOf(String(x).toLowerCase()) < 0; }).join(' · ');
       document.title = (j.title || 'Live') + (byline ? ' · ' + byline : '');
       document.getElementById('title').textContent = j.title || '';
       document.getElementById('offTitle').textContent = j.title || 'Live';

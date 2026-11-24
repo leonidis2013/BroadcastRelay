@@ -319,7 +319,7 @@ test('app: one Stream info for everything, presets, Companion', async () => {
     assert.deepStrictEqual([r.j.stream_title, r.j.stream_preset], ['Wednesday Night', 'Wednesday Night']);
     r = await req(port, 'POST', '/api/v1/stream', { title: 'From Companion' });
     r = await req(port, 'GET', '/api/v1/status');
-    assert.deepStrictEqual([r.j.stream_title, r.j.stream_preset], ['From Companion', ''], 'editing clears the preset name');
+    assert.deepStrictEqual([r.j.stream_title, r.j.stream_preset], ['From Companion', 'Wednesday Night'], 'a typed title is a one-off; the format stays picked');
     r = await req(port, 'POST', '/api/v1/stream/preset/9');
     assert.strictEqual(r.status, 404);
     r = await req(port, 'POST', '/api/destinations', { type: 'youtube', key: 'k', useShared: false, title: 'Own title' });
@@ -487,6 +487,96 @@ test('ndi-bridge + ffmpeg: NDI in produces H.264 + PCM in step (gcc, ffmpeg)', a
   const j = JSON.parse(pr.stdout);
   assert.deepStrictEqual(j.streams.map((s) => s.codec_name), ['h264', 'pcm_s24be']);
   assert.ok(Number(j.format.duration) > 2.5 && Number(j.format.duration) < 4.5, 'duration ' + j.format.duration);
+});
+
+test('netinfo: ss, /proc/net and URL parsing', () => {
+  const N = R('lib/netinfo.js');
+  const ss = N.parseSs([
+    '0      0      192.168.1.5:40512   142.250.115.207:443  users:(("ffmpeg",pid=4242,fd=7))',
+    '\t cubic wscale:7,7 rto:224 rtt:21.5/3.2 ato:40 mss:1448 cwnd:42 bytes_sent:123456 bytes_retrans:1448 retrans:0/3 delivery_rate 4.2Mbps unacked:5',
+    '0      0      192.168.1.5:22   192.168.1.9:51000',
+    '\t rtt:0.4/0.2 cwnd:10'
+  ].join('\n'));
+  assert.strictEqual(ss.length, 2);
+  assert.deepStrictEqual([ss[0].pid, ss[0].peer, ss[0].rtt, ss[0].rttVar, ss[0].retrans, ss[0].bytesRetrans, ss[0].cwnd, ss[0].sendKbps], [4242, '142.250.115.207:443', 21.5, 3.2, 3, 1448, 42, 4200]);
+  assert.strictEqual(ss[1].pid, null);
+  const pn = N.parseProcNet('  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000:2694 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 55555 1 0000000000000000 100 0 0 10 0\n');
+  assert.deepStrictEqual(pn, [{ local: '00000000', port: 9876, state: '0A', inode: '55555' }]);
+  assert.deepStrictEqual(N.hostPort('rtmp://a.rtmp.youtube.com/live2'), { host: 'a.rtmp.youtube.com', port: 1935, udp: false });
+  assert.deepStrictEqual(N.hostPort('rtmps://live-api-s.facebook.com:443/rtmp/'), { host: 'live-api-s.facebook.com', port: 443, udp: false });
+  assert.strictEqual(N.hostPort('srt://x.example:9000?streamid=a').udp, true);
+  assert.strictEqual(N.hostPort('not a url'), null);
+});
+test('app: series and part, formats, count up, bitrate, events, network', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'br-'));
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1), DATA_DIR: data }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 4500));
+    let r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.stream.presets.length, 1, 'there is always a format');
+    const first = r.j.settings.stream.presets[0].id;
+    r = await req(port, 'POST', '/api/stream/presets', { name: 'Series', info: { title: '{series} - {part} - {sermon}', description: 'From {speaker}' } });
+    const fid = r.j.id;
+    r = await req(port, 'POST', '/api/stream', { presetId: fid, series: 'Romans', part: 3, sermon: 'Grace' });
+    assert.ok(r.j.ok, JSON.stringify(r.j));
+    r = await req(port + 1, 'GET', '/player.json');
+    assert.deepStrictEqual([r.j.title, r.j.series], ['Romans - Part 3 - Grace', 'Romans, Part 3']);
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.deepStrictEqual([r.j.stream_preset, r.j.stream_series, r.j.stream_part], ['Series', 'Romans', 3]);
+    await req(port, 'POST', '/api/stream', { part: 0 });
+    r = await req(port + 1, 'GET', '/player.json');
+    assert.deepStrictEqual([r.j.title, r.j.series], ['Romans - Grace', 'Romans'], 'Part 0 = no part');
+    r = await req(port, 'POST', '/api/v1/stream', { format: '1' });
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.stream.presetId, first, 'Companion picks a format by number');
+    r = await req(port, 'POST', '/api/v1/stream', { format: 'nope' });
+    assert.strictEqual(r.status, 404);
+    r = await req(port, 'POST', '/api/stream/presets/' + fid + '/move', { dir: -1 });
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.stream.presets[0].id, fid, 'formats move');
+    r = await req(port, 'DELETE', '/api/stream/presets/' + fid);
+    r = await req(port, 'DELETE', '/api/stream/presets/' + first);
+    assert.strictEqual(r.status, 400, 'the last format stays');
+    // bitrate history, events and the network page
+    await req(port, 'POST', '/api/destinations', { type: 'rtmp', url: 'rtmp://127.0.0.1/live', key: 'x' });
+    await req(port, 'POST', '/api/v1/golive');
+    await new Promise((res) => setTimeout(res, 3000));
+    r = await req(port, 'GET', '/api/bitrate/history?seconds=60');
+    assert.ok(r.j.points.length >= 2 && r.j.points.some((x) => x[1] > 0 && Object.keys(x[3]).length === 1), 'input and destination bitrate');
+    r = await req(port, 'GET', '/api/events/log');
+    assert.ok(r.j.events.some((e) => e.what === 'Connected'), JSON.stringify(r.j.events));
+    r = await req(port, 'GET', '/api/state');
+    assert.ok(r.j.status.destinations[0].tcp && r.j.status.destinations[0].tcp.rtt > 0, 'destination TCP numbers');
+    assert.ok(r.j.status.input.link && r.j.status.input.link.linkMbps > 0, 'SRT link numbers');
+    r = await req(port, 'GET', '/api/network');
+    assert.ok(r.j.ok && Array.isArray(r.j.interfaces) && r.j.ports.some((x) => x.port === port && x.state === 'ok'), 'the control port shows as listening');
+    r = await req(port, 'POST', '/api/network/test');
+    assert.ok(r.j.results.length >= 1 && r.j.results[0].host === '127.0.0.1');
+  } finally { p.kill(); }
+});
+test('app: the part counts up after a long enough stream', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'br-'));
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1), DATA_DIR: data, BR_MIN_SESSION_MS: '1500' }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 4000));
+    await req(port, 'POST', '/api/stream', { series: 'Romans', part: 3 });
+    await req(port, 'POST', '/api/destinations', { type: 'rtmp', url: 'rtmp://127.0.0.1/live', key: 'x' });
+    await req(port, 'POST', '/api/v1/golive');
+    await new Promise((res) => setTimeout(res, 3000));
+    await req(port, 'POST', '/api/v1/end');
+    await new Promise((res) => setTimeout(res, 2500));
+    let r = await req(port, 'GET', '/api/v1/status');
+    assert.strictEqual(r.j.stream_part, 4, 'Part 3 -> Part 4');
+    await req(port, 'POST', '/api/stream', { autoPart: false });
+    await req(port, 'POST', '/api/v1/golive');
+    await new Promise((res) => setTimeout(res, 3000));
+    await req(port, 'POST', '/api/v1/end');
+    await new Promise((res) => setTimeout(res, 2500));
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.strictEqual(r.j.stream_part, 4, 'off: stays');
+  } finally { p.kill(); }
 });
 
 // ---------- run ----------
