@@ -300,6 +300,22 @@
   .tcaret { width:3px; align-self:stretch; min-height:30px; background:var(--acc); border-radius:2px; }
   .fmtrow .sl b { display:flex; gap:8px; align-items:center; }
 
+  /* resource estimates */
+  .estl { font-size:12px; color:var(--dim); margin-top:4px; font-variant-numeric:tabular-nums; }
+  .estbox { margin-top:12px; padding:10px 12px; border-radius:10px; background:var(--inset); border:1px solid var(--line); font-size:13px; line-height:1.5; }
+  .estbox .big { font-size:15px; font-weight:700; }
+  .estbox .tot { margin-top:4px; color:var(--dim); }
+  .estbox .g, #resBars .g { color:var(--ok); } .estbox .w, #resBars .w { color:var(--warn); } .estbox .b, #resBars .b { color:var(--bad); }
+  .rbars { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin:4px 0 12px; }
+  .rbar b { display:block; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin-bottom:4px; }
+  .rbar .v { font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .rbar .v small { font-size:12px; font-weight:500; color:var(--dim); }
+  .rbar .track2 { height:8px; border-radius:4px; background:var(--inset); border:1px solid var(--line); overflow:hidden; margin-top:6px; }
+  .rbar .track2 i { display:block; height:100%; background:var(--ok); border-radius:4px; }
+  .rbar .track2 i.w { background:var(--warn); } .rbar .track2 i.b { background:var(--bad); }
+  table.hl tr.tot td { font-weight:700; border-top:2px solid var(--line); }
+  @media (max-width:700px) { .rbars { grid-template-columns:1fr; } }
+
   /* network card */
   #netCard .nwrap { display:grid; grid-template-columns:minmax(0, 1.25fr) minmax(0, 1fr); gap:16px; align-items:stretch; }
   #netCard .ngraph { display:flex; flex-direction:column; min-width:0; }
@@ -450,6 +466,7 @@
     <button data-pane="rec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span>Recording</span></button>
     <button data-pane="companion"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Companion</span></button>
     <button data-pane="network"><svg viewBox="0 0 24 24"><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 17.5h.01M10 17.5h.01M12 14V8M8 4h8v4H8z"/></svg><span>Network</span></button>
+    <button data-pane="resources"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg><span>Resources</span></button>
     <button data-pane="system"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>System</span></button>
   </div>
   <div class="pane" id="pane"></div>
@@ -929,6 +946,18 @@
   if (window.ResizeObserver) new ResizeObserver(function () { drawHistory(); }).observe($('#histCan').parentNode);
   window.addEventListener('resize', drawHistory);
 
+  // ---------- resource estimates ----------
+  function coresTxt(c) { var n = (c || 0) / 100; return (n < 0.01 ? '<0.01' : n < 0.1 ? n.toFixed(2) : n < 10 ? n.toFixed(1) : Math.round(n)) + (n >= 0.95 && n < 1.05 ? ' core' : ' cores'); }
+  function memTxt(mb) { return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : Math.round(mb) + ' MB'; }
+  function capPct(c) { var R = ST.resources; return R ? Math.round(100 * c / (R.limits.cores * 100)) : 0; }
+  function lvl(pct) { return pct > 90 ? 'b' : pct > 70 ? 'w' : 'g'; }
+  function estFor(id) { return ST.resources ? ST.resources.items.find(function (x) { return x.id === id; }) : null; }
+  function estLine(e) {
+    if (!e) return '';
+    return '<div class="estl" title="Estimate: ' + esc(e.parts || '') + '">≈ ' + coresTxt(e.cpu) + ' (' + capPct(e.cpu) + '% of this app) · ' + memTxt(e.memMB) +
+      (e.upKbps ? ' · ' + rate(e.upKbps) + ' upload' : '') + (e.lanKbps ? ' · ' + rate(e.lanKbps) + ' per receiver on your network' : '') + '</div>';
+  }
+
   // destination card
   var TYPE_NAME = { youtube: 'YouTube', facebook: 'Facebook', rtmp: 'RTMP', srt: 'SRT', ndi: 'NDI' };
   function renderDest(el, d, st) {
@@ -947,7 +976,7 @@
     var reasons = st.reasons && st.reasons.length ? '<div class="note">' + esc(st.reasons.join('; ')) + '</div>' : '';
     var html = '<div class="dh"><span class="dot' + (st.state === 'live' ? ' bad' : st.state === 'retrying' ? ' warn' : on ? ' acc' : '') + '"></span><div class="dn">' + esc(d.name) + '</div></div>' +
       '<div class="chips">' + chips + '</div>' +
-      '<div class="dsub" style="margin-top:0">' + esc(st.desc || '') + '</div>' + reasons + stats + err +
+      '<div class="dsub" style="margin-top:0">' + esc(st.desc || '') + '</div>' + (st.state === 'live' ? '' : estLine(estFor(d.id))) + reasons + stats + err +
       '<div class="df"><span class="when">' + (st.watchUrl ? '<a href="' + esc(st.watchUrl) + '" target="_blank" rel="noopener">Watch on ' + TYPE_NAME[d.type] + '</a>' : '') + '</span>' +
       '<button data-edit="' + d.id + '">Edit</button>' +
       (on ? '<button class="danger" data-stop="' + d.id + '">Stop</button>' : '<button class="on" data-start="' + d.id + '">Start</button>') + '</div>';
@@ -1226,6 +1255,7 @@
       '<div class="fgrid notndi"><label class="fld wide"><span>Audio</span>' + segH('amode', [['copy', 'Original when it is AAC (best)'], ['aac', 'Always re-encode AAC']], d.audio.mode) + '</label>' +
       '<label class="fld"><span>AAC bitrate when encoding</span><select data-f="abitrate">' + opts([[128, '128 kb/s'], [160, '160 kb/s'], [192, '192 kb/s'], [256, '256 kb/s'], [320, '320 kb/s']], d.audio.bitrate) + '</select></label>' +
       '<div class="fld wide note" id="fANote"></div></div>' +
+      '<div class="estbox" id="dEst">Estimating…</div>' +
       '<div class="msec">Go live</div>' +
       '<div class="fgrid"><label class="fld wide"><span>Start with the Go live button</span>' + segH('armed', [['1', 'Yes'], ['0', 'No, only by hand']], d.armed ? '1' : '0') + '</label></div>' +
       '<div class="formerr hide" id="dErr"></div>' +
@@ -1266,11 +1296,38 @@
       $('#fANote').innerHTML = type === 'facebook' ? 'Facebook recommends 128 kb/s AAC and may reject more than 256 kb/s.' : type === 'youtube' ? 'YouTube re-encodes audio to AAC 128 kb/s or Opus for viewers; a higher upload bitrate still gives it a cleaner source.' : '';
     }
     $('[data-f=name]', root).addEventListener('input', function () { if (segVal(root, 'type') === 'ndi') refresh(); });
+    // the estimate follows every change of type, resolution, frame rate, bitrate, quality or audio
+    var estT = null, estN = 0;
+    function updEst() {
+      clearTimeout(estT);
+      estT = setTimeout(function () {
+        var f = function (k) { return $('[data-f=' + k + ']', root).value; }, n = ++estN, type = segVal(root, 'type');
+        call('POST', 'api/estimate', { type: type, video: { mode: segVal(root, 'vmode'), height: Number(f('height')), fps: Number(f('fps')), bitrate: Number(f('bitrate')) || 0, preset: f('preset') }, audio: { mode: segVal(root, 'amode'), bitrate: Number(f('abitrate')) } }).then(function (r) {
+          if (n !== estN || !r.ok || !$('#dEst')) return;
+          var e = r.estimate, R = ST.resources, L = R.limits, armed = segVal(root, 'armed') === '1';
+          var old = id ? estFor(id) : null, base = R.golive;
+          var cpu = base.cpu - (old && old.armed ? old.cpu : 0) + (armed ? e.cpu : 0);
+          var mem = base.memMB - (old && old.armed ? old.memMB : 0) + (armed ? e.memMB : 0);
+          var up = base.upKbps - (old && old.armed ? old.upKbps : 0) + (armed ? e.upKbps : 0);
+          var p1 = capPct(e.cpu), pt = capPct(cpu), pm = Math.round(100 * mem / L.memMB), upMax = R.uploadMbps * 1000, pu = upMax ? Math.round(100 * up / upMax) : 0;
+          var tip = pt > 100 ? '<div class="b" style="margin-top:4px">That is more CPU than this app may use, so streams would stutter. Use <b>Send the original</b> where the destination accepts it, a lower resolution, or a lighter Quality / CPU setting.</div>'
+            : pt > 85 ? '<div class="w" style="margin-top:4px">Close to the limit: keep some room for the input, the web player and spikes.</div>' : '';
+          $('#dEst').innerHTML = '<div><b>Estimate for this destination:</b> <span class="big ' + lvl(p1) + '">' + coresTxt(e.cpu) + '</span> (' + p1 + '% of this app\'s ' + L.cores + ' cores) · ' + memTxt(e.memMB) + ' memory' +
+            (e.upKbps ? ' · ' + rate(e.upKbps) + ' upload' : '') + (e.lanKbps ? ' · ' + rate(e.lanKbps) + ' per NDI receiver' : '') + '</div>' +
+            '<div class="tot">Go live with ' + (armed ? 'this' : 'the others (this one starts by hand)') + ': <b class="' + lvl(pt) + '">' + coresTxt(cpu) + ' of ' + L.cores + ' (' + pt + '%)</b> · <b class="' + lvl(pm) + '">' + memTxt(mem) + ' of ' + memTxt(L.memMB) + '</b> · ' +
+            (upMax ? '<b class="' + lvl(pu) + '">' + rate(up) + ' of ' + rate(upMax) + ' upload (' + pu + '%)</b>' : rate(up) + ' upload') + '</div>' + tip +
+            (R.input.assumed ? '<div class="note">Assuming a 1080p30 input until a feed arrives.</div>' : '');
+        });
+      }, 150);
+    }
+    root.addEventListener('change', updEst);
+    root.addEventListener('input', function (ev) { if (ev.target.dataset.f === 'bitrate') updEst(); });
     wireSegs(root, function (name, v) {
+      updEst();
       if (name === 'type') { var nm = $('[data-f=name]', root); nm.placeholder = TYPE_NAME[v]; if (v === 'youtube' || v === 'facebook') { var cn = ST.platforms[v].connected ? 'api' : 'key'; $$('[data-seg=connect] button', root).forEach(function (b) { b.classList.toggle('on', b.dataset.v === cn); }); } }
       refresh();
     });
-    refresh();
+    refresh(); updEst();
     $('#mNo').onclick = closeModal;
     if (id) $('#dDel').onclick = function () { confirmBox('Delete ' + d.name + '?', 'The destination and its saved stream key are removed.' + (running ? ' Its stream stops now.' : ''), 'Delete', function () { call('DELETE', 'api/destinations/' + id).then(function (r) { if (!r.ok) toast(r.error); }); }, true); };
     $('#dSave').onclick = function () {
@@ -1772,6 +1829,57 @@
     };
   };
   PANES.network.prep = function (s, v) { if (s === 'network') v.publicUrl = S.settings.network.publicUrl; return v; };
+
+  PANES.resources = function () {
+    return '<div class="note pnote">How much of this app\'s CPU, memory and internet upload each part needs, estimated from its settings and a short test of this server\'s CPU. Every encoded destination is its own encode, so they add up; <b>Send the original</b> costs almost nothing.</div>' +
+      '<div class="card"><h2>Go live needs</h2><div id="resBars"></div><div id="resTable"></div></div>' +
+      '<div class="card"><h2>This server</h2><div id="resCpu"></div><div class="set"><div class="sl"><span>Measuring runs FFmpeg flat out for about 10 seconds. Do it when nothing is streaming.</span></div><div class="sc"><button id="resBench">Measure the CPU again</button></div></div></div>' +
+      card('Internet upload', set('Your upload speed (Mb/s)', 'From a speed test at the server\'s location, so the upload total can be compared with it. Keep the stream total under about 70% of it. 0 = not set.', inp('uploadMbps', S.settings.resources.uploadMbps || 0, 'num', 'type="number" min="0" max="100000" step="0.1"')), 'resources');
+  };
+  PANES.resources.wire = function (p) {
+    $('#resBench', p).onclick = function () {
+      var b = this; b.disabled = true; b.textContent = 'Measuring…';
+      call('POST', 'api/resources/benchmark').then(function (r) {
+        b.disabled = false; b.textContent = 'Measure the CPU again';
+        if (!r.ok) return toast(r.error || 'Measuring failed');
+        toast('Measured: 1080p30 needs about ' + r.bench.cores1080 + ' cores', true);
+      });
+    };
+  };
+  PANES.resources.live = function () {
+    var R = ST.resources; if (!R || !$('#resBars')) return;
+    var L = R.limits, G = R.golive, upMax = R.uploadMbps * 1000;
+    var bar = function (label, val, sub, pct) { return '<div class="rbar"><b>' + label + '</b><div class="v">' + val + ' <small>' + sub + '</small></div><div class="track2"><i class="' + lvl(pct) + '" style="width:' + Math.min(100, pct) + '%"></i></div></div>'; };
+    var pc = capPct(G.cpu), pm = Math.round(100 * G.memMB / L.memMB), pu = upMax ? Math.round(100 * G.upKbps / upMax) : 0;
+    var bars = '<div class="rbars">' + bar('CPU', coresTxt(G.cpu), 'of ' + L.cores + ' · ' + pc + '%', pc) + bar('Memory', memTxt(G.memMB), 'of ' + memTxt(L.memMB) + ' · ' + pm + '%', pm) +
+      bar('Upload', rate(G.upKbps), upMax ? 'of ' + rate(upMax) + ' · ' + pu + '%' : 'set your upload speed below', upMax ? pu : 0) + '</div>';
+    var warn = [];
+    if (pc > 100) warn.push('<span class="b">Go live needs more CPU than this app may use, so streams would stutter (speed under 1×). Use <b>Send the original</b> for destinations that accept your OBS settings, lower resolutions, or a lighter Quality / CPU setting' + (L.coresFrom === 'the app\'s CPU limit' ? ', or raise the app\'s CPU limit in TrueNAS' : '') + '.</span>');
+    else if (pc > 80) warn.push('<span class="w">Close to the CPU limit: there is little room for spikes.</span>');
+    if (pm > 90) warn.push('<span class="b">Close to the memory limit' + (L.memFrom === 'the app\'s memory limit' ? ': raise it in the app\'s settings in TrueNAS' : '') + '.</span>');
+    if (upMax && pu > 70) warn.push('<span class="' + (pu > 90 ? 'b' : 'w') + '">The streams use ' + pu + '% of your upload. Above about 70% a busy moment on the network can make them buffer.</span>');
+    if (R.input.assumed) warn.push('<span class="note">Assuming a 1080p30 input until a feed arrives.</span>');
+    bars += warn.map(function (w) { return '<div style="margin:4px 0">' + w + '</div>'; }).join('');
+    if ($('#resBars').innerHTML !== bars) $('#resBars').innerHTML = bars;
+    var row = function (x) {
+      var note = x.kind === 'web' ? 'Plus ' + rate(x.perViewerKbps) + ' per viewer (upload for viewers outside your network)' : x.kind === 'dest' ? (x.parts || '') + (x.armed ? '' : ' · <span class="chip">Manual</span>') : '';
+      var now = x.measured != null ? coresTxt(x.measured) : '–';
+      return '<tr><td><b>' + esc(x.name) + '</b><small>' + note + '</small></td><td><span class="' + lvl(capPct(x.cpu) * 2) + '">' + coresTxt(x.cpu) + '</span><small>' + capPct(x.cpu) + '% of the app</small></td><td>' + memTxt(x.memMB) + '</td><td>' +
+        (x.upKbps ? rate(x.upKbps) : x.lanKbps ? '<small>' + rate(x.lanKbps) + ' per receiver, local network</small>' : '–') + '</td><td>' + now + '</td></tr>';
+    };
+    var tot = function (label, t) { return '<tr class="tot"><td>' + label + '</td><td class="' + lvl(capPct(t.cpu)) + '">' + coresTxt(t.cpu) + '<small>' + capPct(t.cpu) + '%</small></td><td>' + memTxt(t.memMB) + '</td><td>' + (t.upKbps ? rate(t.upKbps) : '–') + '</td><td></td></tr>'; };
+    var tbl = '<table class="hl"><tr><th>Part</th><th>CPU</th><th>Memory</th><th>Upload</th><th>Using now</th></tr>' + R.items.map(row).join('') +
+      tot('Go live', R.golive) + (R.all.cpu !== R.golive.cpu ? tot('Everything at once', R.all) : '') + '</table>' +
+      '<div class="note" style="margin-top:6px">Estimates, usually within about 20%. <b>Using now</b> is measured while a destination is live. The fixed parts run whenever there is a feed.</div>';
+    if ($('#resTable').innerHTML !== tbl) $('#resTable').innerHTML = tbl;
+    var B = R.bench;
+    var cpu = '<div class="set first"><div class="sl"><b>This app can use</b><span>' + esc(L.cpuModel || 'CPU') + '</span></div><div class="sc"><b>' + L.cores + ' cores, ' + memTxt(L.memMB) + '</b></div></div>' +
+      '<div class="note">' + (L.coresFrom === 'the server' ? 'All ' + L.hostCores + ' cores of the server (no CPU limit set on the app).' : 'Limited by ' + esc(L.coresFrom) + ' (the server has ' + L.hostCores + ').') + ' ' +
+        (L.memFrom === 'the server' ? 'All of the server\'s memory.' : 'Memory limited by ' + esc(L.memFrom) + ' (the server has ' + memTxt(L.hostMemMB) + ').') + (L.memUsedMB != null ? ' In use now: ' + memTxt(L.memUsedMB) + '.' : '') + '</div>' +
+      '<div class="set"><div class="sl"><b>Speed of this CPU</b><span>' + (B.running ? 'Measuring…' : B.measured ? 'Measured ' + new Date(B.at).toLocaleString() : 'Not measured yet: using typical numbers') + '</span></div><div class="sc"><b>1080p30 encode ≈ ' + B.cores1080 + ' cores</b></div></div>' +
+      (B.learn && Math.abs(B.learn - 1) > 0.03 ? '<div class="note">The estimates have been adjusted ×' + B.learn.toFixed(2) + ' to match what the streams really use on this server.</div>' : '');
+    if ($('#resCpu').innerHTML !== cpu) $('#resCpu').innerHTML = cpu;
+  };
 
   PANES.system = function () {
     return card('Password', set('Current password', '', '<input type="password" id="pwOld" class="wide" autocomplete="current-password">', 'first') + set('New password', 'At least 8 characters. Other signed-in browsers are signed out.', '<input type="password" id="pwNew" class="wide" autocomplete="new-password">') +

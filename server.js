@@ -34,6 +34,7 @@ const Secrets = require('./lib/secrets.js');
 const Sys = require('./lib/sys.js');
 const Demo = require('./lib/demo.js');
 const Net = require('./lib/netinfo.js');
+const Est = require('./lib/estimate.js');
 const pkg = require('./package.json');
 
 const args = process.argv.slice(2);
@@ -59,6 +60,8 @@ const DEFAULTS = {
   input: { source: 'stream', ndiSource: '', ndiBitrate: 12000, ndiPreset: 'veryfast', allowFrom: MediaMTX.PRIVATE.slice() },
   ports: Object.assign({}, MediaMTX.DEFAULT_PORTS),
   network: { publicHosts: '', publicUrl: '' },
+  // your internet upload speed in Mb/s (0 = not set), to compare the estimated upload with
+  resources: { uploadMbps: 0 },
   // what the stream is called, shared by every destination (one can use its own instead)
   stream: { title: '{weekday} Service - {date}', sermon: '', speaker: '', speakers: [], series: '', seriesList: [], part: 0, autoPart: true, description: '', privacy: 'public', category: '', presets: [], presetId: '' },
   destinations: [],
@@ -191,6 +194,66 @@ function lanAddresses() {
 
 // ---------- the feed ----------
 const sys = Sys.create();
+
+// ---------- resource estimates ----------
+const benchPath = path.join(DATA, 'benchmark.json');
+const est = Est.create({ get: () => readJson(benchPath, null), set: (o) => { try { fs.writeFileSync(benchPath, JSON.stringify(o, null, 2)); } catch (e) { /* read-only */ } } });
+// demo: numbers like a 6-core desktop CPU, so the page shows something real-looking
+if (DEMO) est.setCal({ at: Date.now(), dec: 0.0016, enc: 0.0105, rss1080: 230, cores1080: 0.75, wallFps: 160 });
+// demo: a typical TrueNAS app with limits set, instead of whatever machine the demo runs on
+const appLimits = DEMO ? () => Object.assign(Est.limits(), { cores: 6, coresFrom: 'the app\'s CPU limit', hostCores: 12, memMB: 8192, memFrom: 'the app\'s memory limit', hostMemMB: 65536, memUsedMB: 910, cpuModel: 'AMD Ryzen 5 5600G with Radeon Graphics' }) : Est.limits;
+function estInput() {
+  const i = feed.info || {};
+  return { width: i.width || 1920, height: i.height || 1080, fps: i.fps || 30, kbps: feed.ready ? feed.kbps : null, audioKbps: i.audioKbps || null, assumed: !feed.info };
+}
+/** Estimate for one destination's settings (saved or still being edited). */
+function estimateDest(d) {
+  const info = feed.info || { width: 1920, height: 1080, fps: 30, videoCodec: 'H264', audioCodec: 'AAC' };
+  const plan = d.type === 'ndi' ? F.plan({ mode: 'encode', height: d.video && d.video.height, fps: d.video && d.video.fps }, {}, info)
+    : F.plan(d.video, d.audio, info);
+  return est.forPlan(plan, estInput(), d.type);
+}
+function estimateWeb() {
+  if (!cfg.web.enabled) return null;
+  const info = feed.info || { width: 1920, height: 1080, fps: 30, videoCodec: 'H264', audioCodec: 'AAC' };
+  const p = F.plan({ mode: cfg.web.mode, height: cfg.web.height, fps: cfg.web.fps, bitrate: cfg.web.bitrate, preset: cfg.web.preset }, { mode: 'aac', bitrate: cfg.web.audioBitrate || 160 }, info);
+  const e = est.forPlan(p, estInput(), 'web', { noBframes: true, opus: true });
+  e.perViewerKbps = e.upKbps; e.upKbps = 0;
+  return e;
+}
+/** The whole picture: limits, the fixed parts, every destination, and totals. */
+function resources(destStates) {
+  const lim = appLimits();
+  const items = est.fixed(estInput(), cfg.input.source === 'ndi' ? { preset: cfg.input.ndiPreset } : null).map((x) => Object.assign({ kind: 'fixed' }, x));
+  const w = estimateWeb();
+  if (w) items.push(Object.assign({ kind: 'web', name: 'Web player', id: 'web' }, w));
+  cfg.destinations.forEach((d, i) => {
+    const e = estimateDest(d), st = destStates && destStates[i];
+    items.push(Object.assign({ kind: 'dest', name: d.name, id: d.id, armed: d.armed, running: !!(st && st.state !== 'off' && st.state !== 'error'), measured: st && st.state === 'live' ? st.cpu : null }, e));
+  });
+  const sum = (list, k) => list.reduce((a, x) => a + (x[k] || 0), 0);
+  const golive = items.filter((x) => x.kind !== 'dest' || x.armed);
+  const run = items.filter((x) => x.kind !== 'dest' || x.running);
+  const total = (list) => ({ cpu: sum(list, 'cpu'), memMB: sum(list, 'memMB'), upKbps: sum(list, 'upKbps'), lanKbps: sum(list, 'lanKbps') });
+  return {
+    limits: lim, bench: est.info(), input: estInput(), uploadMbps: cfg.resources.uploadMbps || 0,
+    items, all: total(items), golive: total(golive), running: total(run),
+    measuredCpu: sys.totalPct() != null ? Math.round(sys.totalPct() * lim.hostCores) : null
+  };
+}
+async function benchmarkNow() {
+  if (DEMO) { await new Promise((r) => setTimeout(r, 1500)); return est.info(); }
+  await est.benchmark(BIN.ffmpeg, os.tmpdir());
+  logEvent('info', 'Resources', 'Measured this CPU: 1080p30 needs about ' + est.info().cores1080 + ' cores');
+  pushState();
+  return est.info();
+}
+// measure the CPU once, soon after the first start, when nothing is streaming
+setTimeout(function autoBench() {
+  if (DEMO || est.info().measured) return;
+  if ([...runs.values()].some((r) => r.want)) return setTimeout(autoBench, 10 * 60e3);
+  benchmarkNow().catch((e) => console.warn('benchmark:', e.message));
+}, 20e3).unref();
 const feed = { ready: false, sourceId: null, path: { ready: false }, info: null, probing: false, gen: 0, lastBytes: null, lastAt: 0, kbps: null, conn: null, since: null };
 
 const mtx = MediaMTX.create({ bin: BIN.mediamtx, dataDir: DATA, recordDir: RECORD_DIR, settings: () => cfg });
@@ -615,8 +678,14 @@ function status() {
   let webPlan = null;
   try { webPlan = feed.info ? F.plan({ mode: cfg.web.mode, height: cfg.web.height, fps: cfg.web.fps, bitrate: cfg.web.bitrate }, { mode: 'aac', bitrate: cfg.web.audioBitrate }, feed.info) : null; } catch (e) { /* none */ }
   const ndiIn = ndi.ingest.info();
+  const dests = cfg.destinations.map((d) => Object.assign({ id: d.id }, destState(d)));
+  const resv = resources(dests);
+  // estimates follow what the encodes really use
+  resv.items.forEach((x) => { const st = x.kind === 'dest' && dests.find((d) => d.id === x.id); if (st && st.state === 'live' && st.stats && st.stats.speed >= 0.95 && st.stats.speed <= 1.05 && !/original/.test(x.parts) && cfg.destinations.find((d) => d.id === x.id).type !== 'ndi') est.learn(x.cpu, st.cpu); });
+  est.flush();
   return {
     now: Date.now(),
+    resources: resv,
     cpu: { total: sys.totalPct(), cores: sys.cores() },
     mediamtx: { state: mtx.proc.state, error: mtx.proc.error },
     input: {
@@ -634,7 +703,7 @@ function status() {
     },
     recording: { enabled: cfg.recording.enabled, active: !!(cfg.recording.enabled && feed.ready), writable: Rec.writable(RECORD_DIR), dir: RECORD_DIR, disk: sys.disk(RECORD_DIR), used, count: recs.length },
     web: { enabled: cfg.web.enabled, state: cfg.web.enabled ? (feed.ready ? w.state : 'waiting') : 'off', error: w.error, stats: w.stats, cpu: procCpu(webProc), desc: webPlan ? F.describe(webPlan) : '', viewers: viewers(webrtcPath.readers || 0), hlsReady: !!webPath.ready, retryIn: w.retryIn },
-    destinations: cfg.destinations.map((d) => Object.assign({ id: d.id }, destState(d))),
+    destinations: dests,
     stream: { title: infoFor({}).title, description: infoFor({}).description, broadcasts: cfg.destinations.filter((d) => d.connect === 'api' && runs.get(d.id) && runs.get(d.id).session).length },
     platforms: {
       youtube: { connected: yt.connected(), channelTitle: cfg.youtube.channelTitle, pending: yt.pending(), needsReconnect: cfg.youtube.needsReconnect, connectError: cfg.youtube.connectError },
@@ -738,6 +807,7 @@ function saveSection(section, v) {
       cfg.ports = p;
       return null;
     }
+    case 'resources': { const u = Number(v.uploadMbps); cfg.resources = { uploadMbps: Number.isFinite(u) && u > 0 ? Math.min(100000, Math.round(u * 10) / 10) : 0 }; return null; }
     case 'network': cfg.network = { publicHosts: str(v.publicHosts, 300), publicUrl: str(v.publicUrl, 300) }; return null;
     case 'web': cfg.web = {
       enabled: v.enabled !== undefined ? !!v.enabled : cfg.web.enabled,
@@ -1242,6 +1312,15 @@ async function controlHandler(req, res) {
     }
     if (p === '/api/events/log' && req.method === 'GET') return send(res, 200, { ok: true, events });
     if (p === '/api/network' && req.method === 'GET') return send(res, 200, Object.assign({ ok: true }, networkInfo()));
+    if (p === '/api/estimate' && req.method === 'POST') {
+      const b = await readBody(req);
+      const d = { type: oneOf(b.type, ['youtube', 'facebook', 'rtmp', 'srt', 'ndi'], 'rtmp'), video: b.video || {}, audio: b.audio || {} };
+      return send(res, 200, { ok: true, estimate: estimateDest(d) });
+    }
+    if (p === '/api/resources/benchmark' && req.method === 'POST') {
+      if ([...runs.values()].some((r) => r.want)) return send(res, 409, { ok: false, error: 'Stop the destinations first: measuring uses every core for a few seconds and would disturb the streams.' });
+      try { return send(res, 200, { ok: true, bench: await benchmarkNow() }); } catch (e) { return send(res, 500, { ok: false, error: 'Measuring failed: ' + e.message }); }
+    }
     if (p === '/api/network/test' && req.method === 'POST') return send(res, 200, { ok: true, results: await reachTest() });
     if (p === '/api/stream/presets' && req.method === 'POST') {
       const r = savePreset(await readBody(req));

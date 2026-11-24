@@ -122,6 +122,18 @@ Go live creates a live video on the Page with the Stream info title and descript
 
 Under the meters, a graph of the last 1, 5, 10 (default), 30 or 60 minutes: short-term loudness as a line, momentary as a shaded area, the −16…−14 LUFS streaming target as a band, and a red mark wherever the true peak went above −1 dBTP. BroadcastRelay keeps the last hour, so reloading the page doesn't lose it.
 
+## Resources
+
+**Settings › Resources** estimates how much CPU, memory and internet upload each part needs, and adds them up for Go live:
+
+- **Limits**: what this app may use, read from its container: the CPU and memory limits set in the TrueNAS app's resources, or the whole server when none are set.
+- **CPU speed**: about 20 seconds after the first start (when nothing is streaming), BroadcastRelay runs FFmpeg on 8 seconds of 1080p test video to measure how fast this CPU decodes and encodes. *Measure the CPU again* repeats it.
+- **Per destination**: each encoded destination is priced from its resolution, frame rate and Quality / CPU setting (each one also decodes the input). *Send the original* costs almost nothing. The destination editor shows the estimate as you change settings, plus the Go live total with it.
+- **Learning**: while destinations run, the measured CPU is compared with the estimate, and the estimates slowly adjust to match this server.
+- **Upload**: enter your upload speed from a speed test to see what share the streams use; keep it under about 70%.
+
+Estimates are usually within about 20%. The web player's upload depends on how many people watch from outside your network.
+
 ## Network
 
 The **Network** card on the main page shows:

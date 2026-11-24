@@ -579,6 +579,60 @@ test('app: the part counts up after a long enough stream', async () => {
   } finally { p.kill(); }
 });
 
+test('estimate: container limits from cgroup files', () => {
+  const E = R('lib/estimate.js');
+  assert.strictEqual(E.cpusetCount('0-3,6,8-9'), 7);
+  assert.strictEqual(E.cpuMaxCores('max 100000'), null);
+  assert.strictEqual(E.cpuMaxCores('250000 100000'), 2.5);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-'));
+  fs.writeFileSync(path.join(dir, 'cpu.max'), '100000 100000\n');
+  fs.writeFileSync(path.join(dir, 'memory.max'), String(2 * 1024 * 1024 * 1024) + '\n');
+  fs.writeFileSync(path.join(dir, 'memory.current'), String(300 * 1048576) + '\n');
+  const L = E.limits(dir);
+  assert.deepStrictEqual([L.cores, L.coresFrom, L.memMB, L.memFrom, L.memUsedMB], [1, 'the app\'s CPU limit', 2048, 'the app\'s memory limit', 300]);
+  fs.writeFileSync(path.join(dir, 'memory.max'), 'max\n');
+  assert.strictEqual(E.limits(dir).memFrom, 'the server');
+});
+test('estimate: more pixels and slower presets cost more, original costs almost nothing', () => {
+  const E = R('lib/estimate.js'), F = R('lib/ffargs.js');
+  const e = E.create({ get: () => ({ enc: 0.015, dec: 0.002, rss1080: 250 }), set: () => {} });
+  const info = { width: 1920, height: 1080, fps: 30, videoCodec: 'H264', audioCodec: 'AAC' };
+  const inp = { width: 1920, height: 1080, fps: 30, kbps: 8000, audioKbps: 320 };
+  const at = (v, type) => e.forPlan(F.plan(v, { mode: 'copy' }, info), inp, type || 'rtmp');
+  const p1080 = at({ mode: 'encode', height: 1080 }), p720 = at({ mode: 'encode', height: 720 }), med = at({ mode: 'encode', height: 1080, preset: 'medium' }), orig = at({ mode: 'original' });
+  assert.ok(p1080.cpu > 90 && p1080.cpu < 120, 'about one core: ' + p1080.cpu);
+  assert.ok(p720.cpu < p1080.cpu && med.cpu > 2 * p1080.cpu * 0.9, [p720.cpu, p1080.cpu, med.cpu].join());
+  assert.ok(med.memMB > p1080.memMB, 'longer lookahead, more memory');
+  assert.ok(orig.cpu < 5 && orig.upKbps > 8000, JSON.stringify(orig));
+  assert.strictEqual(p1080.upKbps, Math.round((6000 + 320) * 1.04), 'video + original audio + overhead');
+  const ndi = at({ mode: 'encode', height: 1080 }, 'ndi');
+  assert.ok(ndi.lanKbps > 100000 && ndi.upKbps === 0);
+  // learning follows the measured CPU slowly
+  for (let i = 0; i < 800; i++) e.learn(p1080.cpu, p1080.cpu * 1.5);
+  assert.ok(at({ mode: 'encode', height: 1080 }).cpu > p1080.cpu * 1.3);
+});
+test('app: resource estimates in status, the editor and settings', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1) }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 4500));
+    await req(port, 'POST', '/api/destinations', { type: 'youtube', key: 'k', video: { mode: 'encode', height: 1080 } });
+    await req(port, 'POST', '/api/destinations', { type: 'rtmp', url: 'rtmp://x/live', key: 'k', armed: false, video: { mode: 'original' } });
+    let r = await req(port, 'GET', '/api/state');
+    const R2 = r.j.status.resources;
+    assert.ok(R2.limits.cores > 0 && R2.limits.memMB > 0);
+    assert.deepStrictEqual(R2.items.map((x) => x.kind), ['fixed', 'web', 'dest', 'dest']);
+    assert.ok(R2.golive.cpu < R2.all.cpu || R2.golive.upKbps < R2.all.upKbps, 'the manual one is only in "everything"');
+    r = await req(port, 'POST', '/api/estimate', { type: 'youtube', video: { mode: 'encode', height: 1080, preset: 'medium' }, audio: { mode: 'copy' } });
+    assert.ok(r.j.estimate.cpu > R2.items[2].cpu * 1.8, 'medium costs more than veryfast');
+    r = await req(port, 'POST', '/api/settings', { section: 'resources', values: { uploadMbps: 35.5 } });
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.status.resources.uploadMbps, 35.5);
+    r = await req(port, 'POST', '/api/resources/benchmark');
+    assert.ok(r.j.ok && r.j.bench.measured);
+  } finally { p.kill(); }
+});
+
 // ---------- run ----------
 (async () => {
   let failed = 0;
