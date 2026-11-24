@@ -57,6 +57,15 @@ Elsewhere: `docker compose up -d` with [`docker-compose.yml`](docker-compose.yml
 
 Send what your best destination needs at a generous bitrate, and let BroadcastRelay make the smaller versions: for example 1080p30, CBR 8000–12000 kb/s, keyframe interval 2 s, AAC 320 kb/s 48 kHz. Only encoders on private networks may publish (change it under *Who may send*).
 
+## Stream info
+
+One place for what the stream is called: **title, description, YouTube privacy and YouTube category**, shared by every YouTube and Facebook destination connected by account, and by the web player. The title can use `{weekday}`, `{date}` and `{time}`.
+
+- **Presets**: save the details as e.g. *Sunday Service*, *Wednesday Night*, *Funeral*, and load one from the card's *Load preset* menu (or from Companion).
+- **While live**: saving, or loading a preset, updates the title and description of the running YouTube and Facebook broadcasts right away.
+- **Its own title**: a destination can be set to use its own title and description instead (Edit › Title and description › Its own).
+- Destinations that use a **stream key** can't be given a title from outside; they keep whatever is set on YouTube or Facebook.
+
 ## Destinations
 
 Each destination has its own video (resolution, frame rate, bitrate, x264 speed) and audio settings, or **Send the original**, which costs almost no CPU. Audio is passed through untouched when it is AAC (one less generation of compression) and re-encoded to AAC otherwise.
@@ -74,7 +83,7 @@ Encoding is done on the CPU. As a rough guide, a 1080p30 encode at *Very fast* u
 3. Credentials › **Create OAuth client ID** › type **TVs and Limited Input devices**.
 4. **Settings › YouTube**: paste the client ID and secret, Save, **Connect**, and enter the code shown at google.com/device.
 
-Go live then creates a broadcast with the destination's title (it can use `{date}`, `{weekday}`, `{time}`), bound to a reusable stream, and YouTube starts it when video arrives. Stop completes it.
+Go live then creates a broadcast with the Stream info title, description, privacy and category, bound to a reusable stream, and YouTube starts it when video arrives. Stop completes it.
 
 ### Facebook (Page)
 
@@ -83,7 +92,7 @@ Either:
 - **Sign in with a code**: create a Meta app (type Business), add *Facebook Login for Business* and turn on **Login from Devices**. Paste the App ID, the **Client token** (App settings › Advanced) and optionally the App secret (makes the sign-in long-lived) under **Settings › Facebook**, then **Connect** and enter the code at facebook.com/device. Pick the Page.
 - **Paste a Page access token** (with `publish_video` and `pages_manage_posts`) and the Page ID.
 
-Go live creates a live video on the Page with the title; Stop ends it. Or skip all this and use Facebook's persistent stream key.
+Go live creates a live video on the Page with the Stream info title and description; Stop ends it. Or skip all this and use Facebook's persistent stream key.
 
 ## Web player
 
@@ -116,7 +125,9 @@ Use a **Generic HTTP** connection. Every request needs the token from **Settings
 | `POST /api/v1/ndi-out/toggle` | also `start`, `stop` |
 | `POST /api/v1/recording/toggle` | also `on`, `off` |
 | `POST /api/v1/input/source/ndi` | or `stream` |
-| `GET /api/v1/status` | `any_live`, `input_live`, `input_kbps`, `recording`, `web_viewers`, `loudness_short`, `cpu`, `destinations.<id>.live`… |
+| `POST /api/v1/stream/preset/<name, id or number>` | Load a Stream info preset (updates live broadcasts) |
+| `POST /api/v1/stream` | Set Stream info; JSON body `{"title": "…", "description": "…", "privacy": "public", "category": "29"}` |
+| `GET /api/v1/status` | `any_live`, `input_live`, `input_kbps`, `recording`, `web_viewers`, `stream_title`, `stream_preset`, `loudness_short`, `cpu`, `destinations.<id>.live`… |
 
 ## Environment
 

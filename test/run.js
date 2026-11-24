@@ -218,6 +218,38 @@ test('facebook: go live on a page, end it', async () => {
   assert.ok(f.calls.some((c) => /\/V9$/.test(c.url) && /end_live_video=true/.test(c.body)));
 });
 
+test('youtube: category on go live, and updates while live keep the start time and tags', async () => {
+  let cfg = { clientId: 'id', clientSecret: 'sec', refreshToken: 'rt', streamId: 'S1' };
+  const f = fakeFetch([
+    [/oauth2.*\/token/, () => [200, { access_token: 'at', expires_in: 3600 }]],
+    [/liveStreams\?/, () => [200, { items: [{ id: 'S1', cdn: { ingestionInfo: { rtmpsIngestionAddress: 'rtmps://y', streamName: 'k' } } }] }]],
+    [/liveBroadcasts\/bind/, () => [200, {}]],
+    [/liveBroadcasts\?part=snippet%2Cstatus&id=B1/, () => [200, { items: [{ id: 'B1', snippet: { scheduledStartTime: '2026-11-29T15:00:00Z' }, status: { privacyStatus: 'public', selfDeclaredMadeForKids: false } }] }]],
+    [/liveBroadcasts\?/, () => [200, { id: 'B1' }]],
+    [/videos\?part=snippet&id=B1/, () => [200, { items: [{ snippet: { title: 'old', categoryId: '22', tags: ['church'] } }] }]],
+    [/videos\?part=snippet$/, () => [200, {}]]
+  ]);
+  const yt = YT.create({ get: () => cfg, save: (p) => { cfg = Object.assign({}, cfg, p); }, fetch: f });
+  const r = await yt.goLive({ title: 'Sunday', description: 'Welcome', privacy: 'public', category: '29' });
+  assert.strictEqual(r.warning, '');
+  let put = f.calls.filter((c) => c.method === 'PUT' && /videos/.test(c.url)).pop();
+  assert.deepStrictEqual(JSON.parse(put.body).snippet, { title: 'Sunday', description: 'Welcome', categoryId: '29', tags: ['church'] });
+  await yt.update('B1', { title: 'Sunday - Baptism', description: 'New', privacy: 'unlisted', category: '29' });
+  const b = JSON.parse(f.calls.filter((c) => c.method === 'PUT' && /liveBroadcasts/.test(c.url)).pop().body);
+  assert.deepStrictEqual([b.snippet.title, b.snippet.scheduledStartTime, b.status.privacyStatus], ['Sunday - Baptism', '2026-11-29T15:00:00Z', 'unlisted']);
+  put = f.calls.filter((c) => c.method === 'PUT' && /videos/.test(c.url)).pop();
+  assert.strictEqual(JSON.parse(put.body).snippet.title, 'Sunday - Baptism');
+  assert.ok(YT.CATEGORIES.some((c) => c[0] === '29'));
+});
+test('facebook: update a live video title', async () => {
+  const cfg = { pageId: '123', pageToken: 'pt' };
+  const f = fakeFetch([[/\/V9$/, () => [200, { success: true }]]]);
+  const fb = FB.create({ get: () => cfg, save() {}, fetch: f });
+  await fb.update('V9', { title: 'Evening Service', description: 'Hi' });
+  const c = f.calls.pop();
+  assert.ok(/title=Evening\+Service/.test(c.body) && /description=Hi/.test(c.body) && /access_token=pt/.test(c.body));
+});
+
 // ---------- the whole app in demo mode ----------
 function req(port, method, p, body, headers) {
   return new Promise((resolve, reject) => {
@@ -258,6 +290,55 @@ test('app: demo mode end to end (API, destinations, Companion)', async () => {
     assert.strictEqual(r.status, 404, 'the public port serves only the player');
     r = await req(port + 1, 'GET', '/hls/../etc/passwd');
     assert.notStrictEqual(r.status, 200);
+  } finally { p.kill(); }
+});
+test('app: one Stream info for everything, presets, Companion', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1) }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 1500));
+    let r = await req(port, 'POST', '/api/stream', { title: 'Sunday Worship {weekday}', description: 'Welcome!', privacy: 'unlisted', category: '29' });
+    assert.ok(r.j.ok, JSON.stringify(r.j));
+    r = await req(port, 'POST', '/api/stream', { title: '' });
+    assert.strictEqual(r.status, 400);
+    r = await req(port, 'POST', '/api/stream', { category: 'nope' });
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.stream.category, '', 'unknown category falls back to the default');
+    const weekday = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    assert.strictEqual(r.j.status.stream.title, 'Sunday Worship ' + weekday);
+    r = await req(port + 1, 'GET', '/player.json');
+    assert.strictEqual(r.j.title, 'Sunday Worship ' + weekday, 'the web player follows Stream info');
+    r = await req(port, 'POST', '/api/stream/presets', { name: 'Wednesday Night', info: { title: 'Wednesday Night', description: 'Midweek', privacy: 'public' } });
+    assert.ok(r.j.ok);
+    r = await req(port, 'POST', '/api/stream/presets', { name: 'wednesday night', info: { title: 'x' } });
+    assert.strictEqual(r.status, 400, 'names are unique');
+    r = await req(port, 'POST', '/api/stream', { title: 'Something else' });
+    r = await req(port, 'POST', '/api/v1/stream/preset/Wednesday%20Night');
+    assert.ok(r.j.ok);
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.deepStrictEqual([r.j.stream_title, r.j.stream_preset], ['Wednesday Night', 'Wednesday Night']);
+    r = await req(port, 'POST', '/api/v1/stream', { title: 'From Companion' });
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.deepStrictEqual([r.j.stream_title, r.j.stream_preset], ['From Companion', ''], 'editing clears the preset name');
+    r = await req(port, 'POST', '/api/v1/stream/preset/9');
+    assert.strictEqual(r.status, 404);
+    r = await req(port, 'POST', '/api/destinations', { type: 'youtube', key: 'k', useShared: false, title: 'Own title' });
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.destinations[0].useShared, false);
+  } finally { p.kill(); }
+});
+test('app: titles from 0.1.x move into Stream info', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000), data = tmp('mig');
+  fs.writeFileSync(path.join(data, 'config.json'), JSON.stringify({ destinations: [
+    { id: 'a1', name: 'YouTube', type: 'youtube', connect: 'api', title: '{weekday} Service - {date}', description: 'Hello', privacy: 'unlisted', video: {}, audio: {} },
+    { id: 'b2', name: 'Facebook', type: 'facebook', connect: 'api', title: 'Different', video: {}, audio: {} },
+    { id: 'c3', name: 'Vimeo', type: 'rtmp', connect: 'key', title: '', video: {}, audio: {} }] }));
+  const p = spawn(process.execPath, [path.join(root, 'server.js')], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1), DATA_DIR: data, MEDIAMTX: '/nonexistent', NDI_BRIDGE: '/nonexistent' }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 1500));
+    const c = JSON.parse(fs.readFileSync(path.join(data, 'config.json'), 'utf8'));
+    assert.deepStrictEqual([c.stream.title, c.stream.description, c.stream.privacy], ['{weekday} Service - {date}', 'Hello', 'unlisted']);
+    assert.deepStrictEqual(c.destinations.map((d) => d.useShared), [true, false, true]);
   } finally { p.kill(); }
 });
 test('app: sign-in and the Companion token', async () => {

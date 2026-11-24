@@ -26,6 +26,7 @@ const MediaMTX = require('./lib/mediamtx.js');
 const Meter = require('./lib/meter.js');
 const Ndi = require('./lib/ndi.js');
 const YouTube = require('./lib/youtube.js');
+const CATEGORY_IDS = YouTube.CATEGORIES.map((c) => c[0]);
 const Facebook = require('./lib/facebook.js');
 const Rec = require('./lib/recordings.js');
 const Auth = require('./lib/auth.js');
@@ -57,6 +58,8 @@ const DEFAULTS = {
   input: { source: 'stream', ndiSource: '', ndiBitrate: 12000, ndiPreset: 'veryfast', allowFrom: MediaMTX.PRIVATE.slice() },
   ports: Object.assign({}, MediaMTX.DEFAULT_PORTS),
   network: { publicHosts: '', publicUrl: '' },
+  // what the stream is called, shared by every destination (one can use its own instead)
+  stream: { title: '{weekday} Service - {date}', description: '', privacy: 'public', category: '', presets: [], presetId: '' },
   destinations: [],
   web: { enabled: true, mode: 'encode', height: 720, fps: 0, bitrate: 0, preset: 'veryfast', audioBitrate: 160, title: 'Live', offlineText: 'The stream will start soon.' },
   ndi: { discoveryServer: '', extraIps: '', groups: '' },
@@ -90,6 +93,17 @@ let cfg = clone(DEFAULTS);
     else if (saved[k] && typeof saved[k] === 'object') cfg[k] = Object.assign({}, DEFAULTS[k], saved[k]);
   }
   cfg.ports = MediaMTX.ports(cfg.ports);
+  // 0.2.0: titles moved from each destination to one shared "stream" section.
+  // Seed it from the first account destination, and let destinations that matched it use it.
+  if (!saved.stream) {
+    const src = cfg.destinations.find((d) => d.connect === 'api' && d.title) || cfg.destinations.find((d) => d.title);
+    if (src) Object.assign(cfg.stream, { title: src.title, description: src.description || '', privacy: src.privacy || 'public' });
+    else if (cfg.web.title && cfg.web.title !== 'Live') cfg.stream.title = cfg.web.title;
+    for (const d of cfg.destinations) {
+      d.useShared = !d.title || (d.title === cfg.stream.title && (d.description || '') === cfg.stream.description && (d.privacy || 'public') === cfg.stream.privacy);
+    }
+  }
+  if (!Array.isArray(cfg.stream.presets)) cfg.stream.presets = [];
 }
 const secrets = Secrets.create(path.join(DATA, 'secret.key'), { masterKey: process.env.BROADCASTRELAY_MASTER_KEY });
 if (!cfg.api.token) cfg.api.token = secrets.enc(crypto.randomBytes(18).toString('base64url'));
@@ -212,6 +226,35 @@ function destArgs(id) {
   return F.destination(d, destUrl(d, run(id)), feed.info, rtsp('live')).args;
 }
 
+/** Title, description, privacy and category a destination goes live with (shared unless it has its own). */
+function infoFor(d) {
+  const base = d.useShared === false ? { title: d.title, description: d.description, privacy: d.privacy } : cfg.stream;
+  return {
+    title: formatTitle(base.title || cfg.stream.title || 'Live'),
+    description: formatTitle(base.description || ''),
+    privacy: base.privacy || 'public',
+    category: cfg.stream.category || ''
+  };
+}
+
+/** Send the current info to every running YouTube/Facebook broadcast (only shared ones when onlyShared). */
+async function pushInfo(onlyShared, onlyId) {
+  const jobs = [];
+  for (const d of cfg.destinations) {
+    const r = runs.get(d.id);
+    if (!r || !r.session || d.connect !== 'api') continue;
+    if (onlyId && d.id !== onlyId) continue;
+    if (onlyShared && d.useShared === false) continue;
+    const pf = platform(d.type);
+    jobs.push(pf.update(r.session.broadcastId || r.session.videoId, infoFor(d))
+      .then(() => { r.infoError = ''; return { name: d.name, ok: true }; })
+      .catch((e) => { r.infoError = 'Could not update the title on ' + (d.type === 'youtube' ? 'YouTube' : 'Facebook') + ': ' + e.message; return { name: d.name, ok: false, error: e.message }; }));
+  }
+  const res = await Promise.all(jobs);
+  pushStatus();
+  return res;
+}
+
 async function startDest(id) {
   const d = dest(id);
   if (!d) return { ok: false, error: 'Unknown destination' };
@@ -223,7 +266,8 @@ async function startDest(id) {
     if (!pf || !pf.connected()) { r.error = (d.type === 'youtube' ? 'YouTube' : 'Facebook') + ' is not connected. Connect it in Settings or switch this destination to a stream key.'; pushStatus(); return { ok: false, error: r.error }; }
     r.want = true; r.phase = 'creating'; pushStatus();
     try {
-      r.session = await pf.goLive({ title: formatTitle(d.title || cfg.web.title || 'Live'), description: formatTitle(d.description || ''), privacy: d.privacy });
+      r.session = await pf.goLive(infoFor(d));
+      r.infoError = r.session.warning || '';
     } catch (e) {
       r.want = false; r.phase = ''; r.error = 'Could not create the broadcast: ' + e.message; pushStatus();
       return { ok: false, error: r.error };
@@ -267,7 +311,8 @@ function destState(d) {
     state: st, error: r.error || (r.want ? p.error : ''), since: p.since, retryIn: p.retryIn,
     stats: p.stats, cpu: p.pid ? sys.pidPct(p.pid) : null, tail: p.tail,
     desc: plan ? F.describe(plan) : '', reasons: plan ? plan.reasons : [],
-    watchUrl: r.session ? r.session.watchUrl : '', live: st === 'live'
+    watchUrl: r.session ? r.session.watchUrl : '', live: st === 'live',
+    infoError: r.infoError || '', ownInfo: d.useShared === false
   };
 }
 
@@ -386,6 +431,7 @@ function status() {
     web: { enabled: cfg.web.enabled, state: cfg.web.enabled ? (feed.ready ? w.state : 'waiting') : 'off', error: w.error, stats: w.stats, cpu: procCpu(webProc), desc: webPlan ? F.describe(webPlan) : '', viewers: viewers(webrtcPath.readers || 0), hlsReady: !!webPath.ready, retryIn: w.retryIn },
     ndiOut: { enabled: cfg.ndiOut.enabled, available: ndi.available(), state: cfg.ndiOut.enabled ? (feed.ready ? ndiOut.state : 'waiting') : 'off', error: ndiOut.error, connections: ndiOut.connections, plan: ndiOut.plan, cpu: ndiOut.pids.reduce((a, p) => a + (sys.pidPct(p) || 0), 0) },
     destinations: cfg.destinations.map((d) => Object.assign({ id: d.id }, destState(d))),
+    stream: { title: infoFor({}).title, description: infoFor({}).description, broadcasts: cfg.destinations.filter((d) => d.connect === 'api' && runs.get(d.id) && runs.get(d.id).session).length },
     platforms: {
       youtube: { connected: yt.connected(), channelTitle: cfg.youtube.channelTitle, pending: yt.pending(), needsReconnect: cfg.youtube.needsReconnect, connectError: cfg.youtube.connectError },
       facebook: { connected: fb.connected(), pageName: cfg.facebook.pageName, pending: fb.pending(), needsReconnect: cfg.facebook.needsReconnect, connectError: cfg.facebook.connectError, pagesError: cfg.facebook.pagesError, pages: (cfg.facebook.pages || []).map((p) => ({ id: p.id, name: p.name })), userConnected: !!cfg.facebook.userToken }
@@ -412,6 +458,7 @@ function appState() {
     ports: { control: PORT, public: PUBLIC_PORT },
     ndi: { available: ndi.available(), why: ndi.whyNot() },
     cpuModel: sys.cpuModel(),
+    categories: YouTube.CATEGORIES,
     status: status()
   };
 }
@@ -449,9 +496,10 @@ function normDest(d, old) {
     connect: type === 'youtube' || type === 'facebook' ? oneOf(d.connect, ['api', 'key'], 'key') : 'key',
     url: str(d.url, 600),
     key,
-    title: str(d.title, 100),
-    description: str(d.description, 5000),
-    privacy: oneOf(d.privacy, ['public', 'unlisted', 'private'], 'public'),
+    useShared: d.useShared !== undefined ? d.useShared !== false : old.useShared !== false,
+    title: d.title !== undefined ? str(d.title, 100) : old.title || '',
+    description: d.description !== undefined ? str(d.description, 5000) : old.description || '',
+    privacy: oneOf(d.privacy, ['public', 'unlisted', 'private'], old.privacy || 'public'),
     video: { mode: oneOf(v.mode, ['original', 'encode'], 'encode'), height: oneOf(Number(v.height), HEIGHTS, 720), fps: oneOf(Number(v.fps), FPSES, 0), bitrate: int(v.bitrate, 0, 60000, 0), preset: oneOf(v.preset, PRESETS, 'veryfast') },
     audio: { mode: oneOf(a.mode, ['copy', 'aac'], 'copy'), bitrate: oneOf(Number(a.bitrate), [96, 128, 160, 192, 256, 320], 256) }
   };
@@ -549,6 +597,62 @@ function afterSave(section, before) {
   if (section === 'ndi') { ndi.applyConfig(); }
 }
 
+// ---------- stream info and presets ----------
+const PRIV = ['public', 'unlisted', 'private'];
+function normInfo(v, base) {
+  v = v || {}; base = base || {};
+  return {
+    title: v.title !== undefined ? str(v.title, 100) : base.title || '',
+    description: v.description !== undefined ? String(v.description == null ? '' : v.description).replace(/\r/g, '').slice(0, 5000) : base.description || '',
+    privacy: oneOf(v.privacy, PRIV, base.privacy || 'public'),
+    category: v.category !== undefined ? oneOf(String(v.category), CATEGORY_IDS, '') : base.category || ''
+  };
+}
+function findPreset(ref) {
+  ref = decodeURIComponent(String(ref || ''));
+  const ps = cfg.stream.presets;
+  return ps.find((p) => p.id === ref) || ps.find((p) => p.name.toLowerCase() === ref.toLowerCase()) || (/^\d+$/.test(ref) ? ps[Number(ref) - 1] : null);
+}
+/** Change the shared info (and which preset it came from), save, and update live broadcasts. */
+async function setStreamInfo(v, presetId) {
+  const next = normInfo(v, cfg.stream);
+  if (!next.title) return { ok: false, error: 'The title can\'t be empty' };
+  const changed = ['title', 'description', 'privacy', 'category'].some((k) => next[k] !== cfg.stream[k]);
+  Object.assign(cfg.stream, next);
+  if (presetId !== undefined) cfg.stream.presetId = presetId;
+  else if (changed) {
+    const p = cfg.stream.presets.find((x) => x.id === cfg.stream.presetId);
+    if (p && ['title', 'description', 'privacy', 'category'].some((k) => p[k] !== next[k])) cfg.stream.presetId = '';
+  }
+  saveCfg(); pushState();
+  if (!changed) return { ok: true, updated: [] };
+  const res = await pushInfo(true);
+  const bad = res.filter((x) => !x.ok);
+  return bad.length ? { ok: false, error: bad.map((x) => x.name + ': ' + x.error).join(' · '), updated: res } : { ok: true, updated: res.map((x) => x.name) };
+}
+function savePreset(b) {
+  const name = str(b.name, 40);
+  if (!name) return { ok: false, error: 'Give the preset a name' };
+  const info = normInfo(b.info || cfg.stream, {});
+  if (!info.title) return { ok: false, error: 'The title can\'t be empty' };
+  let p = b.id ? cfg.stream.presets.find((x) => x.id === b.id) : null;
+  if (b.id && !p) return { ok: false, error: 'Unknown preset' };
+  const clash = cfg.stream.presets.find((x) => x.name.toLowerCase() === name.toLowerCase() && x !== p);
+  if (clash) return { ok: false, error: 'There is already a preset called ' + clash.name };
+  if (!p) { if (cfg.stream.presets.length >= 50) return { ok: false, error: 'At most 50 presets' }; p = { id: rid() }; cfg.stream.presets.push(p); }
+  Object.assign(p, { name }, info);
+  cfg.stream.presetId = p.id;
+  saveCfg(); pushState();
+  return { ok: true, id: p.id };
+}
+function deletePreset(id) {
+  const before = cfg.stream.presets.length;
+  cfg.stream.presets = cfg.stream.presets.filter((p) => p.id !== id);
+  if (cfg.stream.presetId === id) cfg.stream.presetId = '';
+  saveCfg(); pushState();
+  return { ok: cfg.stream.presets.length < before };
+}
+
 // ---------- actions (shared by the page and the Companion API) ----------
 function findDest(ref) {
   ref = decodeURIComponent(String(ref || ''));
@@ -574,11 +678,20 @@ function toggleSetting(section, on) {
 }
 
 /** /api/v1/... : what Companion (and the page's buttons) call. */
-async function action(parts, method) {
+async function action(parts, method, body) {
   const [a, b, c] = parts;
+  body = body || {};
   if (a === 'status' && !b) return { ok: true, data: compactStatus() };
   if (method !== 'POST') return { status: 405, ok: false, error: 'Use POST' };
   if (a === 'golive') return goLive();
+  // POST /stream {title, description, privacy, category}: change the shared stream info
+  if (a === 'stream' && !b) return setStreamInfo(body);
+  // POST /stream/preset/<name, id or number>: load a preset
+  if (a === 'stream' && b === 'preset' && c) {
+    const p = findPreset(c);
+    if (!p) return { status: 404, ok: false, error: 'No preset "' + c + '"' };
+    return setStreamInfo(p, p.id);
+  }
   if (a === 'end') return endAll();
   if (a === 'destinations' && b) {
     const d = findDest(b);
@@ -620,6 +733,8 @@ function compactStatus() {
     ndi_out_state: s.ndiOut.state,
     destinations_live: live, destinations_total: s.destinations.length,
     any_live: live > 0,
+    stream_title: infoFor({}).title,
+    stream_preset: (cfg.stream.presets.find((p) => p.id === cfg.stream.presetId) || {}).name || '',
     cpu: s.cpu.total,
     destinations: {}
   };
@@ -685,7 +800,7 @@ function playerRoutes(req, res, u, isPublic) {
   const p = u.pathname;
   if (req.method === 'GET' && ((isPublic && p === '/') || p === '/watch' || p === '/embed')) return serveFile(res, path.join(__dirname, 'public', 'watch.html'), p === '/embed' ? {} : { 'x-frame-options': 'SAMEORIGIN' }), true;
   if (req.method === 'GET' && p === '/player.json') {
-    send(res, 200, { title: cfg.web.title, offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
+    send(res, 200, { title: infoFor({}).title, offlineText: cfg.web.offlineText, live: !!(cfg.web.enabled && webPath.ready), webrtc: !!(cfg.web.enabled && webrtcPath.ready) });
     return true;
   }
   if (req.method === 'GET' && p.startsWith('/vendor/') && /^\/vendor\/[\w.-]+\.js$/.test(p)) return serveFile(res, path.join(__dirname, 'public', p)), true;
@@ -747,8 +862,8 @@ async function controlHandler(req, res) {
     // ---- Companion API (token or a logged-in page) ----
     if (p.startsWith('/api/v1/')) {
       if (!companionAuth(req, u) && !(cfg.auth.passwordHash && auth.sessionOk(req)) && !DEMO) return send(res, 401, { ok: false, error: 'Send the API token as "Authorization: Bearer <token>" or ?token=' });
-      if (req.method === 'POST') await readBody(req).catch(() => ({}));
-      const r = await action(p.slice(8).split('/').filter(Boolean), req.method);
+      const body = req.method === 'POST' ? await readBody(req).catch(() => ({})) : {};
+      const r = await action(p.slice(8).split('/').filter(Boolean), req.method, body);
       const code = typeof r.status === 'number' ? r.status : r.ok ? 200 : 400;
       delete r.status;
       return send(res, code, r.data || r);
@@ -787,7 +902,10 @@ async function controlHandler(req, res) {
       if (old) {
         cfg.destinations[cfg.destinations.indexOf(old)] = d;
         const r = runs.get(d.id);
-        if (r && r.proc.wanted && JSON.stringify(Object.assign({}, old, { title: 0, description: 0, privacy: 0, name: 0, armed: 0 })) !== JSON.stringify(Object.assign({}, d, { title: 0, description: 0, privacy: 0, name: 0, armed: 0 }))) r.proc.restart();
+        const INFO = { title: 0, description: 0, privacy: 0, useShared: 0, name: 0, armed: 0 };
+        if (r && r.proc.wanted && JSON.stringify(Object.assign({}, old, INFO)) !== JSON.stringify(Object.assign({}, d, INFO))) r.proc.restart();
+        const infoKeys = (x) => JSON.stringify([x.useShared, x.title, x.description, x.privacy]);
+        if (r && r.session && infoKeys(old) !== infoKeys(d)) pushInfo(false, d.id);
       } else cfg.destinations.push(d);
       saveCfg(); pushState(); pushStatus();
       return send(res, 200, { ok: true, id: d.id });
@@ -810,6 +928,16 @@ async function controlHandler(req, res) {
       saveCfg(); pushState(); pushStatus();
       return send(res, 200, { ok: true });
     }
+    if (p === '/api/stream' && req.method === 'POST') {
+      const b = await readBody(req);
+      const r = await setStreamInfo(b, b.presetId !== undefined ? (findPreset(b.presetId) ? b.presetId : '') : undefined);
+      return send(res, r.ok ? 200 : 400, r);
+    }
+    if (p === '/api/stream/presets' && req.method === 'POST') {
+      const r = savePreset(await readBody(req));
+      return send(res, r.ok ? 200 : 400, r);
+    }
+    if ((m = /^\/api\/stream\/presets\/([\w-]+)$/.exec(p)) && req.method === 'DELETE') return send(res, 200, deletePreset(m[1]));
     if (p === '/api/ndi/sources' && req.method === 'GET') {
       const r = DEMO ? { ok: true, sources: [{ name: 'FOH-MAC (OBS Program)', url: '192.168.10.21:5961' }, { name: 'PTZ-1 (Channel 1)', url: '192.168.20.31:5961' }] } : await ndi.list(int(u.searchParams.get('seconds'), 1, 15, 4));
       return send(res, 200, r);

@@ -244,6 +244,21 @@
   .lu.hot b { color:var(--warn); } .lu.over b { color:var(--bad); }
   .tgt { font-size:11px; color:var(--dim); }
 
+  /* stream info card */
+  #infoCard .ititle { font-size:19px; font-weight:700; line-height:1.25; overflow-wrap:anywhere; }
+  #infoCard .idesc { color:var(--dim); font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:3.9em; overflow:hidden; margin-top:4px; }
+  #infoCard .irow { display:flex; gap:12px; align-items:flex-start; }
+  #infoCard .irow > div:first-child { flex:1; min-width:0; }
+  #infoCard .ipre { display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  #infoCard .ipre select { max-width:200px; }
+  .prev { font-size:12.5px; color:var(--dim); margin-top:4px; overflow-wrap:anywhere; }
+  .prev b { color:var(--fg); font-weight:600; }
+  .tok { font-family:var(--mono); font-size:11.5px; padding:1px 6px; border-radius:5px; background:var(--card2); border:1px solid var(--line); cursor:pointer; color:var(--fg); }
+  .tok:hover { border-color:var(--acc); }
+  .prow { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .prow select { flex:1; min-width:160px; }
+  @media (max-width:720px) { #infoCard .irow { flex-direction:column; } #infoCard .ipre { justify-content:flex-start; } }
+
   /* destination editor, misc */
   .add { border:1px dashed var(--line); border-left:1px dashed var(--line); background:transparent; align-items:center; justify-content:center; min-height:120px; color:var(--dim); cursor:pointer; }
   .add:hover { color:var(--fg); border-color:var(--faint); }
@@ -335,6 +350,7 @@
         </div>
       </div>
     </article>
+    <article class="dev wide" id="infoCard"></article>
   </div>
 </section>
 
@@ -535,8 +551,137 @@
       cardsKey = key;
     }
     S.settings.destinations.forEach(function (d, i) { renderDest($('[data-dest="' + d.id + '"]'), d, ST.destinations[i] || { state: 'off' }); });
-    renderWeb(); renderNdiOut(); renderRec();
+    renderWeb(); renderNdiOut(); renderRec(); renderInfo();
     renderAlerts();
+  }
+
+  // ---------- stream info (one place for every destination) ----------
+  var PRIVACY = [['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']];
+  var INFO_KEYS = ['title', 'description', 'privacy', 'category'];
+  function catName(id) { var c = (S.categories || []).find(function (x) { return x[0] === id; }); return c ? c[1] : ''; }
+  function fmtPreview(t) {
+    var now = new Date();
+    return String(t || '').replace(/\{date\}/g, now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))
+      .replace(/\{weekday\}/g, now.toLocaleDateString('en-US', { weekday: 'long' }))
+      .replace(/\{time\}/g, now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+  }
+  function samePreset(p, v) { return INFO_KEYS.every(function (k) { return (p[k] || '') === (v[k] || ''); }); }
+  function renderInfo() {
+    var st = S.settings.stream, el = $('#infoCard');
+    var preset = st.presets.find(function (p) { return p.id === st.presetId; });
+    // only account-connected destinations can be given a title; stream-key ones use whatever is set on the platform
+    var uses = S.settings.destinations.filter(function (d) { return d.connect === 'api' && d.useShared !== false; }).map(function (d) { return d.name; });
+    var keyed = S.settings.destinations.some(function (d) { return d.type === 'youtube' || d.type === 'facebook' ? d.connect !== 'api' : false; });
+    var own = S.settings.destinations.filter(function (d) { return d.useShared === false && d.connect === 'api'; }).map(function (d) { return d.name; });
+    var errs = ST.destinations.filter(function (d) { return d.infoError; }).map(function (d) { return d.infoError; });
+    var html = '<div class="dh"><span class="dot acc"></span><div class="dn">Stream info</div><div class="chips">' +
+      (preset ? '<span class="chip a">' + esc(preset.name) + '</span>' : '') +
+      (ST.stream.broadcasts ? '<span class="chip l">On air · edits update ' + ST.stream.broadcasts + ' broadcast' + (ST.stream.broadcasts > 1 ? 's' : '') + '</span>' : '') + '</div></div>' +
+      '<div class="irow"><div><div class="ititle">' + esc(ST.stream.title) + '</div>' +
+      '<div class="idesc">' + (ST.stream.description ? esc(ST.stream.description) : 'No description') + '</div>' +
+      '<div class="prev">YouTube: <b>' + esc((PRIVACY.find(function (p) { return p[0] === st.privacy; }) || [0, 'Public'])[1]) + '</b>' + (st.category ? ' · <b>' + esc(catName(st.category)) + '</b>' : '') +
+      ' · Used by ' + (uses.length ? esc(uses.join(', ')) + ' and the web player' : 'the web player') + (own.length ? ' · Own title: ' + esc(own.join(', ')) : '') + '</div>' +
+      (keyed ? '<div class="prev">Destinations using a stream key keep the title set on YouTube or Facebook. Switch them to <b>Account</b> to set it from here.</div>' : '') + '</div>' +
+      '<div class="ipre">' + (st.presets.length ? '<select id="iPreset" title="Load a preset"><option value="">Load preset…</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') + '</select>' : '') +
+      '<button class="on" id="iEdit">Edit</button></div></div>' +
+      (errs.length ? '<div class="errbox">' + errs.map(esc).join('<br>') + '</div>' : '');
+    if (el.innerHTML === html) return;
+    el.innerHTML = html;
+    $('#iEdit').onclick = editInfo;
+    var sel = $('#iPreset');
+    if (sel) sel.onchange = function () {
+      var p = st.presets.find(function (x) { return x.id === sel.value; });
+      sel.value = '';
+      if (!p) return;
+      var go = function () { call('POST', 'api/stream', { title: p.title, description: p.description, privacy: p.privacy, category: p.category, presetId: p.id }).then(infoResult); };
+      if (ST.stream.broadcasts) confirmBox('Load ' + esc(p.name) + '?', 'You are live. The title on YouTube and Facebook changes to:<br><b>' + esc(fmtPreview(p.title)) + '</b>', 'Load and update', go);
+      else go();
+    };
+  }
+  function infoResult(r) {
+    if (!r.ok) { toast(r.error || 'Not saved'); return r; }
+    toast(r.updated && r.updated.length ? 'Saved and updated ' + r.updated.join(', ') : 'Saved', true);
+    return r;
+  }
+
+  function editInfo() {
+    var st = S.settings.stream, live = ST.stream.broadcasts;
+    var html = '<div class="mh">Stream info</div><div class="mb" id="iEd">' +
+      '<div class="note" style="margin-bottom:10px">One title and description for YouTube, Facebook and the web player. A destination can still use its own (Edit on its card).</div>' +
+      '<div class="msec">Preset</div><div class="prow"><select id="ePreset"><option value="">None</option>' + st.presets.map(function (p) { return '<option value="' + p.id + '"' + (p.id === st.presetId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>' +
+      '<button id="ePSave">Save as preset…</button><button id="ePUpd" class="hide">Update preset</button><button id="ePDel" class="danger hide">Delete</button></div>' +
+      '<div class="prow hide" id="ePNew" style="margin-top:6px"><input id="ePName" placeholder="Preset name, e.g. Sunday Service" maxlength="40" style="flex:1"><button class="on" id="ePNewOk">Save preset</button><button id="ePNewNo">Cancel</button></div>' +
+      '<div class="msec">Details</div><div class="fgrid">' +
+      '<label class="fld wide"><span>Title</span><input data-i="title" maxlength="100" value="' + esc(st.title) + '"></label>' +
+      '<div class="fld wide"><div class="prev">Insert: <button type="button" class="tok" data-tok="{weekday}">{weekday}</button> <button type="button" class="tok" data-tok="{date}">{date}</button> <button type="button" class="tok" data-tok="{time}">{time}</button></div><div class="prev" id="ePrev"></div></div>' +
+      '<label class="fld wide"><span>Description</span><textarea data-i="description" rows="5" maxlength="5000">' + esc(st.description) + '</textarea></label>' +
+      '<label class="fld"><span>YouTube privacy</span><select data-i="privacy">' + opts(PRIVACY, st.privacy) + '</select></label>' +
+      '<label class="fld"><span>YouTube category</span><select data-i="category">' + opts(S.categories || [], st.category) + '</select></label>' +
+      '</div><div class="note" style="margin-top:8px">Facebook uses the title and description; privacy and category are YouTube only.</div>' +
+      '<div class="formerr hide" id="iErr"></div></div>' +
+      '<div class="mf"><span class="sp"></span><button id="mNo">Cancel</button><button class="on" id="iSave">' + (live ? 'Save and update ' + live + ' live broadcast' + (live > 1 ? 's' : '') : 'Save') + '</button></div>';
+    modal(html, true);
+    var root = $('#iEd');
+    var presets = st.presets.slice();
+    var val = function () { var o = {}; $$('[data-i]', root).forEach(function (e) { o[e.dataset.i] = e.value; }); return o; };
+    var chosen = function () { var id = $('#ePreset').value; return presets.find(function (x) { return x.id === id; }); };
+    var err = function (m) { $('#iErr').textContent = m; $('#iErr').classList.toggle('hide', !m); };
+    var paint = function () {
+      var v = val(), p = chosen();
+      $('#ePrev').innerHTML = 'Today this reads: <b>' + (esc(fmtPreview(v.title)) || '—') + '</b>';
+      $('#ePUpd').classList.toggle('hide', !p || samePreset(p, v));
+      $('#ePDel').classList.toggle('hide', !p);
+    };
+    var fill = function (p) { INFO_KEYS.forEach(function (k) { $('[data-i=' + k + ']', root).value = p[k] || (k === 'privacy' ? 'public' : ''); }); paint(); };
+    $$('[data-i]', root).forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
+    $$('[data-tok]', root).forEach(function (b) {
+      b.onclick = function () {
+        var t = $('[data-i=title]', root), a = t.selectionStart != null ? t.selectionStart : t.value.length, z = t.selectionEnd != null ? t.selectionEnd : a;
+        t.value = t.value.slice(0, a) + b.dataset.tok + t.value.slice(z); t.focus(); t.selectionStart = t.selectionEnd = a + b.dataset.tok.length; paint();
+      };
+    });
+    $('#ePreset').onchange = function () { var p = chosen(); if (p) fill(p); else paint(); };
+    $('#ePSave').onclick = function () { $('#ePNew').classList.remove('hide'); $('#ePName').focus(); };
+    $('#ePNewNo').onclick = function () { $('#ePNew').classList.add('hide'); };
+    $('#ePNewOk').onclick = function () {
+      var name = $('#ePName').value.trim();
+      call('POST', 'api/stream/presets', { name: name, info: val() }).then(function (r) {
+        if (!r.ok) return err(r.error);
+        err('');
+        presets.push(Object.assign({ id: r.id, name: name }, val()));
+        var o = document.createElement('option'); o.value = r.id; o.textContent = name;
+        $('#ePreset').appendChild(o); $('#ePreset').value = r.id;
+        $('#ePNew').classList.add('hide'); $('#ePName').value = '';
+        toast('Preset saved', true); paint();
+      });
+    };
+    $('#ePName').onkeydown = function (e) { if (e.key === 'Enter') $('#ePNewOk').click(); };
+    $('#ePUpd').onclick = function () {
+      var p = chosen();
+      call('POST', 'api/stream/presets', { id: p.id, name: p.name, info: val() }).then(function (r) { if (!r.ok) return err(r.error); Object.assign(p, val()); toast('Preset updated', true); paint(); });
+    };
+    $('#ePDel').onclick = function () {
+      var p = chosen();
+      call('DELETE', 'api/stream/presets/' + p.id).then(function (r) {
+        if (!r.ok) return err('Could not delete the preset');
+        presets = presets.filter(function (x) { return x !== p; });
+        var o = $('#ePreset option[value="' + p.id + '"]'); if (o) o.remove();
+        $('#ePreset').value = ''; toast('Preset deleted', true); paint();
+      });
+    };
+    $('#mNo').onclick = closeModal;
+    $('#iSave').onclick = function () {
+      var v = val(), p = chosen();
+      v.presetId = p && samePreset(p, v) ? p.id : '';
+      $('#iSave').disabled = true;
+      call('POST', 'api/stream', v).then(function (r) {
+        $('#iSave').disabled = false;
+        // saved, but a live broadcast refused the change: close and show it on the card
+        if (!r.ok && !r.updated) return err(r.error || 'Not saved');
+        closeModal(); infoResult(r);
+      });
+    };
+    paint();
   }
 
   function renderAlerts() {
@@ -759,8 +904,10 @@
       '<label class="fld wide" id="fUrl"><span id="fUrlL">Server</span><input data-f="url" value="' + esc(d.url) + '" spellcheck="false" autocomplete="off"></label>' +
       '<label class="fld wide" id="fKey"><span>Stream key</span><input data-f="key" type="password" autocomplete="new-password" spellcheck="false" placeholder="' + (d.hasKey ? 'Saved. Type to replace it' : 'Paste the stream key') + '"></label>' +
       '<div class="fld wide note" id="fApiNote"></div>' +
-      '<label class="fld wide" id="fTitle"><span>Title</span><input data-f="title" value="' + esc(d.title) + '" maxlength="100"></label>' +
-      '<label class="fld wide" id="fDesc"><span>Description</span><textarea data-f="description" rows="2">' + esc(d.description) + '</textarea></label>' +
+      '<label class="fld wide" id="fShared"><span>Title and description</span>' + segH('shared', [['1', 'Use Stream info'], ['0', 'Its own']], d.useShared === false ? '0' : '1') + '</label>' +
+      '<div class="fld wide note" id="fSharedNote"></div>' +
+      '<label class="fld wide" id="fTitle"><span>Title</span><input data-f="title" value="' + esc(d.useShared === false ? d.title : S.settings.stream.title) + '" maxlength="100"></label>' +
+      '<label class="fld wide" id="fDesc"><span>Description</span><textarea data-f="description" rows="3">' + esc(d.useShared === false ? d.description : S.settings.stream.description) + '</textarea></label>' +
       '<label class="fld" id="fPriv"><span>Privacy</span><select data-f="privacy">' + opts([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], d.privacy) + '</select></label>' +
       '</div>' +
       '<div class="msec">Video</div>' +
@@ -787,13 +934,17 @@
       var api = plat && conn === 'api';
       $('#fUrl').classList.toggle('hide', api);
       $('#fKey').classList.toggle('hide', api || type === 'srt');
-      ['#fTitle', '#fDesc'].forEach(function (s) { $(s).classList.toggle('hide', !api); });
-      $('#fPriv').classList.toggle('hide', !(api && type === 'youtube'));
+      var own = segVal(root, 'shared') === '0';
+      $('#fShared').classList.toggle('hide', !api);
+      $('#fSharedNote').classList.toggle('hide', !api || own);
+      $('#fSharedNote').innerHTML = 'Goes live as <b>' + esc(ST.stream.title) + '</b>. Change it with Stream info on the main page.';
+      ['#fTitle', '#fDesc'].forEach(function (s) { $(s).classList.toggle('hide', !api || !own); });
+      $('#fPriv').classList.toggle('hide', !(api && own && type === 'youtube'));
       $('#fUrlL').textContent = type === 'srt' ? 'SRT address (srt://host:port?streamid=…)' : plat ? 'Server (leave empty for ' + TYPE_NAME[type] + '\'s RTMPS server)' : 'Server (rtmp:// or rtmps://)';
       $('[data-f=url]', root).placeholder = type === 'srt' ? 'srt://example.com:9000?streamid=…' : plat ? (type === 'youtube' ? 'rtmps://a.rtmps.youtube.com/live2' : 'rtmps://live-api-s.facebook.com:443/rtmp') : 'rtmp://server/app';
       var pc = plat ? ST.platforms[type] : null;
       $('#fApiNote').classList.toggle('hide', !api);
-      $('#fApiNote').innerHTML = api ? (pc.connected ? 'Go live creates a new ' + TYPE_NAME[type] + ' broadcast on <b>' + esc(type === 'youtube' ? pc.channelTitle : pc.pageName) + '</b> with this title. Stop ends it. Title can use {date}, {weekday} and {time}.' : '<span class="bad">' + TYPE_NAME[type] + ' is not connected yet.</span> Connect it in Settings › ' + TYPE_NAME[type] + ', or use a stream key.') : '';
+      $('#fApiNote').innerHTML = api ? (pc.connected ? 'Go live creates a new ' + TYPE_NAME[type] + ' broadcast on <b>' + esc(type === 'youtube' ? pc.channelTitle : pc.pageName) + '</b>. Stop ends it.' : '<span class="bad">' + TYPE_NAME[type] + ' is not connected yet.</span> Connect it in Settings › ' + TYPE_NAME[type] + ', or use a stream key.') : '';
       var orig = segVal(root, 'vmode') === 'original';
       $$('.enc', root).forEach(function (x) { x.classList.toggle('hide', orig); });
       $('#fANote').innerHTML = type === 'facebook' ? 'Facebook recommends 128 kb/s AAC and may reject more than 256 kb/s.' : type === 'youtube' ? 'YouTube re-encodes audio to AAC 128 kb/s or Opus for viewers; a higher upload bitrate still gives it a cleaner source.' : '';
@@ -809,7 +960,7 @@
       var f = function (k) { return $('[data-f=' + k + ']', root).value; };
       var type = segVal(root, 'type');
       var body = {
-        id: id || undefined, type: type, name: f('name'), connect: segVal(root, 'connect'), url: f('url'), title: f('title'), description: f('description'), privacy: f('privacy'),
+        id: id || undefined, type: type, name: f('name'), connect: segVal(root, 'connect'), url: f('url'), title: f('title'), description: f('description'), privacy: f('privacy'), useShared: segVal(root, 'shared') !== '0',
         armed: segVal(root, 'armed') === '1',
         video: { mode: segVal(root, 'vmode'), height: Number(f('height')), fps: Number(f('fps')), bitrate: Number(f('bitrate')) || 0, preset: f('preset') },
         audio: { mode: segVal(root, 'amode'), bitrate: Number(f('abitrate')) }
@@ -932,7 +1083,7 @@
     var w = S.settings.web, url = webUrl();
     return '<div class="note pnote">The web player shows the stream on any browser. On the church network it uses WebRTC (under a second behind). From the internet it uses HLS (a few seconds behind) and needs the player port reachable, for example through a reverse proxy or a Cloudflare Tunnel to port ' + S.ports.public + '.</div>' +
       card('Player', set('Web player', 'Runs while the input is connected', segH('enabled', [['true', 'On'], ['false', 'Off']], String(w.enabled)), 'first') +
-        set('Title', 'Shown on the player and the waiting screen', inp('title', w.title, 'wide')) +
+        set('Title', 'Comes from Stream info on the main page', '<span class="note">' + esc(ST.stream.title) + '</span>') +
         set('Waiting message', 'Shown before the stream starts', inp('offlineText', w.offlineText, 'wide')), 'web') +
       card('Quality', set('Video', '', segH('mode', [['encode', 'Encode'], ['original', 'Original']], w.mode)) +
         '<div id="wEnc" class="' + (w.mode === 'original' ? 'hide' : '') + '">' +
@@ -1058,9 +1209,11 @@
         ex('POST', '/ndi-out/toggle', 'NDI output: <code>start</code>, <code>stop</code>, <code>toggle</code>') +
         ex('POST', '/recording/on', 'Recording: <code>on</code>, <code>off</code>, <code>toggle</code>') +
         ex('POST', '/input/source/ndi', 'Switch the input: <code>stream</code> or <code>ndi</code>') +
+        ex('POST', '/stream/preset/<name, id or number>', 'Load a Stream info preset (updates live broadcasts)') +
+        ex('POST', '/stream', 'Set Stream info: JSON body <code>{"title": "…", "description": "…", "privacy": "public", "category": "29"}</code>') +
       '</table></div>' +
       '<div class="card"><h2>Status for feedback (GET)</h2><table class="kv">' +
-        ex('GET', '/status', 'JSON with <code>any_live</code>, <code>input_live</code>, <code>recording</code>, <code>web_viewers</code>, <code>loudness_short</code>, <code>cpu</code> and <code>destinations.&lt;id&gt;.live</code>') +
+        ex('GET', '/status', 'JSON with <code>any_live</code>, <code>input_live</code>, <code>recording</code>, <code>web_viewers</code>, <code>stream_title</code>, <code>stream_preset</code>, <code>loudness_short</code>, <code>cpu</code> and <code>destinations.&lt;id&gt;.live</code>') +
       '</table>' + (ds.length ? '<div class="note" style="margin-top:8px">Destination ids: ' + ds.map(function (d) { return esc(d.name) + ' = <code>' + d.id + '</code>'; }).join(' · ') + '</div>' : '') +
       '<div class="note" style="margin-top:8px">In Companion, a Generic HTTP connection can poll <code>/status</code> into variables (JSON path e.g. <code>$.any_live</code>) and color buttons from them.</div></div>';
   };
