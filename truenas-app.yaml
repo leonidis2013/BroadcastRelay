@@ -10,9 +10,12 @@
 #     The TrueNAS web UI uses 80/443, so these don't clash with it. Change PORT/PUBLIC_PORT here
 #     and the others on the Ports page if another app uses them.
 # Settings, sign-ins and keys are kept in the broadcastrelay-data volume (Docker's own storage).
+# Updating: pull_policy: always fetches the newest image whenever the app starts, so to update,
+# Stop and Start the app (or Edit > Save). Settings and recordings are kept.
 services:
   broadcastrelay:
     image: ghcr.io/leonidis2013/broadcastrelay:latest
+    pull_policy: always   # download the newest image every time the app starts or is redeployed
     container_name: broadcastrelay
     restart: unless-stopped
     network_mode: host

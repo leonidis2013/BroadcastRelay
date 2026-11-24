@@ -32,6 +32,8 @@ Part of the Broadcast series (BroadcastMaster, BroadcastDecode), with the same l
 
 Settings, sign-ins and stream keys are kept in the `broadcastrelay-data` Docker volume. Recordings go to the dataset.
 
+**Updating:** the YAML uses `pull_policy: always`, so the newest image is downloaded every time the app starts. To update, **Stop** and **Start** the app in TrueNAS (or **Edit › Save**). The version is shown next to the name at the top of the page.
+
 The container uses **host networking** (NDI discovery and WebRTC need the server's real network). These ports must be free on the server:
 
 | Port | Use |
