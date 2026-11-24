@@ -5,9 +5,10 @@ A Docker relay for church live streaming, run from a web page. OBS (or an NDI so
 - **YouTube** and **Facebook**, through their APIs (it creates the broadcast with your title and ends it when you stop) or with a stream key
 - **Any RTMP / RTMPS or SRT service** (Vimeo, Restream, another church…)
 - **A web player** for the church website and overflow rooms: WebRTC on the LAN (under a second behind), HLS from the internet
-- **NDI out**: the feed shows up on the network as an NDI source (for BroadcastDecode, vMix, OBS…)
+- **NDI outputs**: add NDI as a destination and the feed shows up on the network as an NDI source (for BroadcastDecode, vMix, OBS…); add several, each with its own name and resolution
 - **Recording** of the raw input for troubleshooting, kept for a set number of days
-- **Audio meters** (EBU R128 loudness and true peak) and a live preview of what is coming in
+- **Audio meters** (EBU R128 loudness and true peak), a **loudness history** graph (1 to 60 minutes) and a live preview of what is coming in
+- **Viewer list** for the web player: who is watching, on what device, over WebRTC or HLS, from the church network or the internet
 - **Bitfocus Companion** control through a small HTTP API
 
 Part of the Broadcast series (BroadcastMaster, BroadcastDecode), with the same look as the Live apps.
@@ -98,15 +99,20 @@ Go live creates a live video on the Page with the Stream info title and descript
 
 - `http://<server>:9181/` the player, `/embed` for an iframe (Settings › Web player has the embed code)
 - On the LAN it plays over **WebRTC** (under a second, good for overflow rooms and lobby TVs). If WebRTC can't connect it falls back to **HLS** (a few seconds behind, works through anything).
+- **Viewers** on the Web player card lists everyone watching: device, address, church network or internet, WebRTC or HLS, how long, and the rate. Each viewer has their own connection, but they all share the one web player encode, so more viewers add upload bandwidth, not CPU. WebRTC viewers can be disconnected from the list.
 - For viewers on the internet, publish **port 9181 only** through a reverse proxy or a Cloudflare Tunnel, and enter its address under *Public address*. Never publish 9180.
 
 ## NDI
 
 - **NDI in**: Settings › Input › NDI, *Find sources*, pick one. The source is encoded to H.264 (you choose the bitrate) with uncompressed audio, and from there it is treated exactly like an OBS feed. If the source disappears, the last frame and silence keep flowing so the destinations stay connected.
-- **NDI out**: Settings › NDI › Publish the feed as NDI. It appears as `BROADCASTRELAY-HOST (Program)`.
+- **NDI out**: *+ Add destination* › NDI. It appears on the network as `HOSTNAME (name)`. Add as many as you need (e.g. a full-size Program and a 540p feed for lobby TVs); each starts and stops like any other destination and can be part of Go live. Each one decodes the feed, which uses some CPU, and full-resolution NDI uses roughly 100–150 Mb/s per receiver.
 - NDI finds sources with mDNS, which does not cross VLANs. For sources on another VLAN, use an **NDI Discovery Server** or enter their IPs under Settings › NDI.
 - The container runs its own mDNS responder (Avahi) by default. `NDI_AVAHI=host` uses the host's instead (mount `/var/run/dbus` from the host); `NDI_AVAHI=off` uses none (Discovery Server only).
 - The image is built with the NDI SDK, downloaded during the build; building it means accepting the [NDI SDK license](https://ndi.video). Build with `--build-arg WITH_NDI=0` for an image without NDI. NDI® is a registered trademark of Vizrt NDI AB.
+
+## Loudness history
+
+Under the meters, a graph of the last 1, 5, 10 (default), 30 or 60 minutes: short-term loudness as a line, momentary as a shaded area, the −16…−14 LUFS streaming target as a band, and a red mark wherever the true peak went above −1 dBTP. BroadcastRelay keeps the last hour, so reloading the page doesn't lose it.
 
 ## Recording
 
@@ -122,7 +128,6 @@ Use a **Generic HTTP** connection. Every request needs the token from **Settings
 | `POST /api/v1/end` | Stop every destination |
 | `POST /api/v1/destinations/<name, id or number>/start` | also `stop`, `toggle` |
 | `POST /api/v1/web/toggle` | also `start`, `stop` |
-| `POST /api/v1/ndi-out/toggle` | also `start`, `stop` |
 | `POST /api/v1/recording/toggle` | also `on`, `off` |
 | `POST /api/v1/input/source/ndi` | or `stream` |
 | `POST /api/v1/stream/preset/<name, id or number>` | Load a Stream info preset (updates live broadcasts) |

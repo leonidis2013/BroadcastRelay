@@ -68,7 +68,8 @@
   /* ===== devices ===== */
   #alerts { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
   #alerts:empty { display:none; }
-  .devs { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; align-items:start; }
+  .devs { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; align-items:stretch; }
+  .devs > .dev > .df { margin-top:auto; } /* buttons line up at the bottom of same-height cards */
   .dev { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--ok); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:9px; min-width:0; }
   .dev.upd { border-left-color:var(--warn); }
   .dev.off { border-left-color:var(--bad); }
@@ -113,6 +114,7 @@
   .side button svg { width:16px; height:16px; flex:0 0 16px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
   .side button:hover { color:var(--fg); }
   .side button.on { background:var(--card); border-color:var(--line); color:var(--acc); box-shadow:inset 3px 0 0 var(--acc); }
+  .side button.sub { margin-left:22px; font-size:13.5px; padding-top:5px; padding-bottom:5px; }
   .pane { flex:1; min-width:0; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px; margin-bottom:14px; max-width:820px; }
   .set { display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--line); }
@@ -193,6 +195,7 @@
     .side::-webkit-scrollbar { display:none; }
     .side button { flex:0 0 auto; min-height:38px; padding:6px 14px; border-radius:999px; background:var(--card2); font-size:14px; border:0; box-shadow:none; }
     .side button.on { background:var(--acc); color:var(--onacc); box-shadow:none; }
+    .side button.sub { margin-left:0; }
     .card { padding:12px; }
     .set { padding:10px 0; gap:10px; flex-wrap:wrap; }
     .sl { flex:1 1 100%; }
@@ -243,6 +246,24 @@
   .lu b small { font-size:10px; color:var(--dim); font-weight:400; margin-left:2px; }
   .lu.hot b { color:var(--warn); } .lu.over b { color:var(--bad); }
   .tgt { font-size:11px; color:var(--dim); }
+
+  /* loudness history */
+  .hist { margin-top:4px; }
+  .hist .hh { display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  .hist .hh b { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); }
+  .hist .key { display:flex; gap:12px; font-size:11.5px; color:var(--dim); margin-left:auto; flex-wrap:wrap; }
+  .hist .key i { display:inline-block; width:14px; height:3px; border-radius:2px; vertical-align:middle; margin-right:5px; }
+  .hist .seg button { padding:3px 9px; font-size:12px; }
+  .hist canvas { width:100%; height:150px; display:block; background:var(--inset); border-radius:8px; }
+  /* viewers */
+  table.vw { width:100%; border-collapse:collapse; font-size:13px; }
+  table.vw th { text-align:left; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); font-weight:700; padding:6px 6px; border-bottom:1px solid var(--line); }
+  table.vw td { padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:middle; font-variant-numeric:tabular-nums; }
+  table.vw td small { display:block; color:var(--dim); font-size:11.5px; }
+  table.vw button { padding:3px 9px; font-size:12px; }
+  .vsum { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; margin-bottom:10px; }
+  .vsum span { color:var(--dim); } .vsum b { color:var(--fg); }
+  @media (max-width:720px) { table.vw .hm { display:none; } }
 
   /* stream info card */
   #infoCard .ititle { font-size:19px; font-weight:700; line-height:1.25; overflow-wrap:anywhere; }
@@ -349,6 +370,11 @@
           <div class="tgt">Streaming target: about −16 to −14 LUFS short-term, true peak below −1 dBTP. YouTube and Facebook turn down anything louder.</div>
         </div>
       </div>
+          <div class="hist">
+        <div class="hh"><b>Loudness history</b><div class="seg" id="histWin"><button data-m="1">1 min</button><button data-m="5">5 min</button><button data-m="10">10 min</button><button data-m="30">30 min</button><button data-m="60">60 min</button></div>
+          <div class="key"><span><i style="background:var(--acc)"></i>Short-term</span><span><i style="background:color-mix(in srgb, var(--acc) 35%, transparent);height:8px"></i>Momentary</span><span><i style="background:var(--bad)"></i>True peak over −1</span><span><i style="background:color-mix(in srgb, var(--ok) 30%, transparent);height:8px"></i>Target −16…−14</span></div></div>
+        <canvas id="histCan" height="300"></canvas>
+      </div>
     </article>
     <article class="dev wide" id="infoCard"></article>
   </div>
@@ -359,11 +385,11 @@
   <div class="side" id="side">
     <button data-pane="input" class="on"><svg viewBox="0 0 24 24"><path d="M4 12h12M12 6l6 6-6 6M20 4v16"/></svg><span>Input</span></button>
     <button data-pane="dests"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><path d="M7 12h4M11 12l8-6M11 12l8 6M11 12h8"/></svg><span>Destinations</span></button>
+    <button data-pane="youtube" class="sub"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z"/></svg><span>YouTube</span></button>
+    <button data-pane="facebook" class="sub"><svg viewBox="0 0 24 24"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/></svg><span>Facebook</span></button>
     <button data-pane="web"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 9l4 2-4 2z M8 21h8"/></svg><span>Web player</span></button>
     <button data-pane="ndi"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v7"/></svg><span>NDI</span></button>
     <button data-pane="rec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span>Recording</span></button>
-    <button data-pane="youtube"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z"/></svg><span>YouTube</span></button>
-    <button data-pane="facebook"><svg viewBox="0 0 24 24"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/></svg><span>Facebook</span></button>
     <button data-pane="companion"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Companion</span></button>
     <button data-pane="network"><svg viewBox="0 0 24 24"><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 17.5h.01M10 17.5h.01M12 14V8M8 4h8v4H8z"/></svg><span>Ports</span></button>
     <button data-pane="system"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>System</span></button>
@@ -434,6 +460,7 @@
       S = j; ST = j.status;
       show(tab === 'login' ? 'main' : tab);
       openEvents();
+      histLoad();
     });
   }
   function openEvents() {
@@ -441,7 +468,7 @@
     es = new EventSource('api/events');
     es.addEventListener('state', function (e) { S = JSON.parse(e.data); ST = S.status; document.body.classList.remove('offline'); renderAll(true); });
     es.addEventListener('status', function (e) { ST = JSON.parse(e.data); if (S) S.status = ST; document.body.classList.remove('offline'); renderAll(false); });
-    es.addEventListener('levels', function (e) { LV = JSON.parse(e.data); LV && (LV.at = Date.now()); });
+    es.addEventListener('levels', function (e) { LV = JSON.parse(e.data); LV && (LV.at = Date.now()); histFromLevels(LV); });
     es.onerror = function () {
       document.body.classList.add('offline');
       // a 401 looks like an error to EventSource: check whether we are signed out
@@ -510,7 +537,6 @@
     if (bad) pills.push('<span class="st warn"><span class="dot warn"></span>' + bad + ' need attention</span>');
     if (ST.recording.active) pills.push('<span class="st bad"><span class="dot bad"></span>REC</span>');
     if (ST.web.enabled && ST.web.state === 'live') pills.push('<span class="st"><span class="dot acc"></span>Web · ' + ST.web.viewers.total + ' watching</span>');
-    if (ST.ndiOut.enabled) pills.push('<span class="st' + (ST.ndiOut.state === 'live' ? ' ok' : '') + '"><span class="dot' + (ST.ndiOut.state === 'live' ? ' ok' : '') + '"></span>NDI out' + (ST.ndiOut.connections ? ' · ' + ST.ndiOut.connections : '') + '</span>');
     if (ST.cpu.total != null) pills.push('<span class="st' + (ST.cpu.total > 90 ? ' bad' : ST.cpu.total > 75 ? ' warn' : '') + '">CPU ' + Math.round(ST.cpu.total) + '%</span>');
     $('#status').innerHTML = pills.join('');
     var anyOn = ST.destinations.some(function (d) { return d.state !== 'off' && d.state !== 'error'; });
@@ -546,12 +572,12 @@
     if (key !== cardsKey) {
       $$('.dyn', g).forEach(function (x) { x.remove(); });
       S.settings.destinations.forEach(function (d) { g.insertAdjacentHTML('beforeend', '<article class="dev dyn" data-dest="' + d.id + '"></article>'); });
-      g.insertAdjacentHTML('beforeend', '<article class="dev dyn add" id="addDest"><b>+ Add destination</b><span class="note">YouTube, Facebook, RTMP or SRT</span></article>');
-      g.insertAdjacentHTML('beforeend', '<article class="dev dyn" id="webCard"></article><article class="dev dyn" id="ndiCard"></article><article class="dev dyn" id="recCard"></article>');
+      g.insertAdjacentHTML('beforeend', '<article class="dev dyn add" id="addDest"><b>+ Add destination</b><span class="note">YouTube, Facebook, RTMP, SRT or NDI</span></article>');
+      g.insertAdjacentHTML('beforeend', '<article class="dev dyn" id="webCard"></article><article class="dev dyn" id="recCard"></article>');
       cardsKey = key;
     }
     S.settings.destinations.forEach(function (d, i) { renderDest($('[data-dest="' + d.id + '"]'), d, ST.destinations[i] || { state: 'off' }); });
-    renderWeb(); renderNdiOut(); renderRec(); renderInfo();
+    renderWeb(); renderRec(); renderInfo();
     renderAlerts();
   }
 
@@ -781,8 +807,85 @@
   }
   requestAnimationFrame(drawMeters);
 
+  // ---------- loudness history (one point per second; the server keeps the last hour) ----------
+  var HIST = new Map(), histWin = 10, histLoaded = false;
+  try { histWin = Number(localStorage.getItem('br-histwin')) || 10; } catch (e) {}
+  function histAdd(t, m, sh, tp) {
+    var h = HIST.get(t);
+    if (!h) { HIST.set(t, { m: m, s: sh, tp: tp }); return; }
+    if (m != null) h.m = h.m == null ? m : Math.max(h.m, m);
+    if (sh != null) h.s = sh;
+    if (tp != null) h.tp = h.tp == null ? tp : Math.max(h.tp, tp);
+  }
+  function histLoad() {
+    call('GET', 'api/levels/history?seconds=3600').then(function (r) {
+      if (!r.ok) return;
+      (r.points || []).forEach(function (p) { histAdd(p[0], p[1], p[2], p[3]); });
+      histLoaded = true;
+    });
+  }
+  function histFromLevels(lv) {
+    if (!lv) return;
+    var t = Math.floor(Date.now() / 1000), v = function (x) { return x == null || x <= -120 ? null : x; };
+    histAdd(t, v(lv.m), v(lv.s), lv.tpk && lv.tpk.length ? v(Math.max.apply(null, lv.tpk)) : null);
+    if (HIST.size > 4000) { var cut = t - 3600; HIST.forEach(function (_, k) { if (k <= cut) HIST.delete(k); }); }
+  }
+  function paintHistWin() { $$('#histWin button').forEach(function (b) { b.classList.toggle('on', Number(b.dataset.m) === histWin); }); }
+  $$('#histWin button').forEach(function (b) { b.onclick = function () { histWin = Number(b.dataset.m); try { localStorage.setItem('br-histwin', histWin); } catch (e) {} paintHistWin(); drawHistory(); }; });
+  paintHistWin();
+  function drawHistory() {
+    var c = $('#histCan'); if (!c || tab !== 'main') return;
+    var W = c.clientWidth * 2, H = c.height;
+    if (c.width !== W) c.width = W;
+    var g = c.getContext('2d'), cs = getComputedStyle(document.documentElement), col = function (v) { return cs.getPropertyValue(v).trim(); };
+    g.clearRect(0, 0, W, H);
+    var L = 64, R = W - 12, T = 12, B = H - 34, lo = -50, hi = 0;
+    var y = function (db) { return T + (B - T) * (hi - Math.max(lo, Math.min(hi, db))) / (hi - lo); };
+    var span = histWin * 60, now = Math.floor(Date.now() / 1000), t0 = now - span;
+    var x = function (t) { return L + (R - L) * (t - t0) / span; };
+    // target band and grid
+    g.fillStyle = col('--ok') + '33';
+    g.fillRect(L, y(-14), R - L, y(-16) - y(-14));
+    g.font = '20px system-ui'; g.textAlign = 'right'; g.textBaseline = 'middle';
+    [0, -10, -20, -30, -40, -50].forEach(function (d) {
+      g.fillStyle = col('--line'); g.fillRect(L, Math.round(y(d)), R - L, 1);
+      g.fillStyle = col('--dim'); g.fillText(String(d), L - 10, y(d));
+    });
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    var step = histWin <= 1 ? 10 : histWin <= 5 ? 60 : histWin <= 10 ? 120 : histWin <= 30 ? 300 : 600;
+    for (var k = 0; k <= span; k += step) {
+      var xx = x(now - k);
+      g.fillStyle = col('--line'); g.fillRect(Math.round(xx), T, 1, B - T);
+      g.fillStyle = col('--dim'); g.textAlign = k === 0 ? 'right' : k === span ? 'left' : 'center';
+      g.fillText(k === 0 ? 'now' : '−' + (k >= 60 ? (k / 60) + 'm' : k + 's'), xx, B + 8);
+    }
+    // momentary as a soft area, short-term as a line, true peak over -1 as red ticks
+    var acc = col('--acc'), seg = [], segs = [];
+    for (var t = t0; t <= now; t++) { var h = HIST.get(t); if (h && h.m != null) seg.push([t, h.m]); else if (seg.length) { segs.push(seg); seg = []; } }
+    if (seg.length) segs.push(seg);
+    g.fillStyle = acc + '40';
+    segs.forEach(function (sg) {
+      g.beginPath(); g.moveTo(x(sg[0][0]), B);
+      sg.forEach(function (p) { g.lineTo(x(p[0]), y(p[1])); });
+      g.lineTo(x(sg[sg.length - 1][0]), B); g.closePath(); g.fill();
+    });
+    g.strokeStyle = acc; g.lineWidth = 3; g.lineJoin = 'round';
+    var on = false; g.beginPath();
+    for (t = t0; t <= now; t++) {
+      var hh = HIST.get(t);
+      if (hh && hh.s != null) { if (on) g.lineTo(x(t), y(hh.s)); else { g.moveTo(x(t), y(hh.s)); on = true; } } else on = false;
+    }
+    g.stroke();
+    g.fillStyle = col('--bad');
+    var w = Math.max(2, (R - L) / span);
+    for (t = t0; t <= now; t++) { var p = HIST.get(t); if (p && p.tp != null && p.tp > -1) g.fillRect(x(t) - w / 2, T, w, 10); }
+    if (!histLoaded || !HIST.size) { g.fillStyle = col('--dim'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '22px system-ui'; g.fillText(histLoaded ? 'No audio yet' : 'Loading…', (L + R) / 2, (T + B) / 2); }
+  }
+  setInterval(drawHistory, 1000);
+  window.addEventListener('resize', drawHistory);
+
   // destination card
-  var TYPE_NAME = { youtube: 'YouTube', facebook: 'Facebook', rtmp: 'RTMP', srt: 'SRT' };
+  var TYPE_NAME = { youtube: 'YouTube', facebook: 'Facebook', rtmp: 'RTMP', srt: 'SRT', ndi: 'NDI' };
   function renderDest(el, d, st) {
     var on = st.state !== 'off' && st.state !== 'error';
     el.className = 'dev dyn ' + stCls(st.state);
@@ -790,7 +893,8 @@
     var stats = '';
     if (st.state === 'live' && st.stats) {
       var s = st.stats;
-      stats = '<div class="stats"><span>Rate <b>' + rate(s.kbps) + '</b></span><span>FPS <b>' + (s.fps != null ? s.fps : '–') + '</b></span><span>Speed <b>' + (s.speed != null ? s.speed + '×' : '–') + '</b></span>' +
+      if (d.type === 'ndi') stats = '<div class="stats"><span>Receivers <b>' + (st.receivers || 0) + '</b></span>' + (st.cpu != null ? '<span>CPU <b>' + Math.round(st.cpu) + '%</b></span>' : '') + '<span>Up <b>' + dur(Date.now() - st.since) + '</b></span></div>';
+      else stats = '<div class="stats"><span>Rate <b>' + rate(s.kbps) + '</b></span><span>FPS <b>' + (s.fps != null ? s.fps : '–') + '</b></span><span>Speed <b>' + (s.speed != null ? s.speed + '×' : '–') + '</b></span>' +
         (s.drop ? '<span>Dropped <b class="bad">' + s.drop + '</b></span>' : '') + (st.cpu != null ? '<span>CPU <b>' + Math.round(st.cpu) + '%</b></span>' : '') + '<span>Up <b>' + dur(Date.now() - st.since) + '</b></span></div>';
     }
     var err = '';
@@ -805,7 +909,8 @@
     if (el.innerHTML !== html) el.innerHTML = html;
   }
   $('#grid').addEventListener('click', function (e) {
-    var b = e.target.closest('button, #addDest');
+    var b = e.target.closest('button, #addDest, a[data-copy]');
+    if (b && b.tagName === 'A') e.preventDefault();
     if (!b) return;
     if (b.id === 'addDest') return editDest(null);
     if (b.dataset.edit) return editDest(b.dataset.edit);
@@ -815,10 +920,10 @@
       return confirmBox('Stop ' + d.name + '?', d.connect === 'api' ? 'This also ends the broadcast on ' + TYPE_NAME[d.type] + '.' : 'The stream to ' + esc(d.name) + ' stops.', 'Stop', function () { act('api/v1/destinations/' + d.id + '/stop'); }, true);
     }
     if (b.dataset.web) return act('api/v1/web/' + b.dataset.web);
-    if (b.dataset.ndiout) return act('api/v1/ndi-out/' + b.dataset.ndiout);
     if (b.dataset.rec) return act('api/v1/recording/' + b.dataset.rec);
     if (b.dataset.copy) return copy(b.dataset.copy);
     if (b.dataset.recs) return showRecordings();
+    if (b.dataset.viewers) return showViewers();
   });
 
   function webUrl() {
@@ -831,22 +936,10 @@
     var html = '<div class="dh"><span class="dot' + (w.state === 'live' ? ' ok' : '') + '"></span><div class="dn">Web player</div></div>' +
       '<div class="chips"><span class="chip t">WebRTC + HLS</span>' + chipFor(w.enabled ? w.state : 'off') + '</div>' +
       '<div class="dsub" style="margin-top:0">' + esc(w.desc || (S.settings.web.mode === 'original' ? 'Original video' : (S.settings.web.height || 'Same') + 'p')) + '</div>' +
-      (w.state === 'live' ? '<div class="stats"><span>Watching <b>' + w.viewers.total + '</b></span><span>WebRTC <b>' + w.viewers.webrtc + '</b></span><span>HLS <b>' + w.viewers.hls + '</b></span>' + (w.cpu != null ? '<span>CPU <b>' + Math.round(w.cpu) + '%</b></span>' : '') + '</div>' : '') +
+      (w.state === 'live' ? '<div class="stats"><span>Watching <b>' + w.viewers.total + '</b></span><span>WebRTC <b>' + w.viewers.webrtc + '</b></span><span>HLS <b>' + w.viewers.hls + '</b></span>' + (w.viewers.kbps ? '<span>Out <b>' + rate(w.viewers.kbps) + '</b></span>' : '') + (w.cpu != null ? '<span>CPU <b>' + Math.round(w.cpu) + '%</b></span>' : '') + '</div>' : '') +
       (w.error && w.state !== 'live' && w.enabled ? '<div class="errbox">' + esc(w.error) + '</div>' : '') +
-      '<div class="df"><span class="when"><a href="' + esc(webUrl()) + '" target="_blank" rel="noopener">Open the player</a></span><button data-copy="' + esc(webUrl()) + '">Copy link</button>' +
+      '<div class="df"><span class="when"><a href="' + esc(webUrl()) + '" target="_blank" rel="noopener">Open</a> · <a href="#" data-copy="' + esc(webUrl()) + '">Copy link</a></span><button data-viewers="1">Viewers' + (w.viewers.total ? ' (' + w.viewers.total + ')' : '') + '</button>' +
       (w.enabled ? '<button class="danger" data-web="stop">Stop</button>' : '<button class="on" data-web="start">Start</button>') + '</div>';
-    if (el.innerHTML !== html) el.innerHTML = html;
-  }
-  function renderNdiOut() {
-    var n = ST.ndiOut, el = $('#ndiCard');
-    el.classList.toggle('hide', !S.ndi.available && !n.enabled);
-    el.className = 'dev dyn ' + (n.enabled ? stCls(n.state) : 'idle') + (!S.ndi.available && !n.enabled ? ' hide' : '');
-    var html = '<div class="dh"><span class="dot' + (n.state === 'live' ? ' ok' : '') + '"></span><div class="dn">NDI output</div></div>' +
-      '<div class="chips"><span class="chip t">NDI</span>' + chipFor(n.enabled ? n.state : 'off') + '</div>' +
-      '<div class="dsub" style="margin-top:0">' + esc(S.hostname.toUpperCase() + ' (' + S.settings.ndiOut.name + ')') + (n.plan ? ' · ' + n.plan.width + '×' + n.plan.height + ' ' + fps(n.plan.fps) + 'fps' : '') + '</div>' +
-      (n.state === 'live' ? '<div class="stats"><span>Receivers <b>' + (n.connections || 0) + '</b></span>' + (n.cpu ? '<span>CPU <b>' + Math.round(n.cpu) + '%</b></span>' : '') + '</div>' : '') +
-      (n.error && n.enabled && n.state !== 'live' ? '<div class="errbox">' + esc(n.error) + '</div>' : '') +
-      '<div class="df"><span class="when"></span>' + (n.enabled ? '<button class="danger" data-ndiout="stop">Stop</button>' : '<button class="on" data-ndiout="start">Start</button>') + '</div>';
     if (el.innerHTML !== html) el.innerHTML = html;
   }
   function renderRec() {
@@ -866,6 +959,32 @@
     else fallback();
     function fallback() { var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed'); } t.remove(); }
   }
+  // ---------- web player viewers ----------
+  var viewersTimer = null;
+  function showViewers() {
+    modal('<div class="mh">Web player viewers</div><div class="mb" id="vBody"><div class="note">Loading…</div></div><div class="mf"><span class="note" style="margin-right:auto">Each viewer has its own connection, but all of them share the one web player encode, so more viewers add upload bandwidth, not CPU.</span><button id="mNo">Close</button></div>', true);
+    $('#mNo').onclick = function () { clearInterval(viewersTimer); closeModal(); };
+    var load = function () {
+      if (!$('#vBody')) { clearInterval(viewersTimer); return; }
+      call('GET', 'api/viewers').then(function (r) {
+        var body = $('#vBody'); if (!body || !r.ok) return;
+        var list = r.viewers || [], w = list.filter(function (v) { return v.kind === 'WebRTC'; }).length;
+        var lan = list.filter(function (v) { return v.lan; }).length;
+        body.innerHTML = '<div class="vsum"><span>Watching <b>' + list.length + '</b></span><span>WebRTC <b>' + w + '</b></span><span>HLS <b>' + (list.length - w) + '</b></span><span>On the church network <b>' + lan + '</b></span><span>Internet <b>' + (list.length - lan) + '</b></span><span>Total out <b>' + rate(r.kbps) + '</b></span></div>' +
+          (list.length ? '<table class="vw"><tr><th>Viewer</th><th>Type</th><th class="hm">Watching for</th><th>Rate</th><th class="hm">Sent</th><th></th></tr>' + list.map(function (v) {
+            return '<tr><td>' + esc(v.device) + '<small>' + esc(v.ip.replace(/^::ffff:/, '')) + ' · ' + (v.lan ? 'church network' : 'internet') + '</small></td><td><span class="chip ' + (v.kind === 'WebRTC' ? 'a' : 't') + '">' + v.kind + '</span></td>' +
+              '<td class="hm">' + dur(Date.now() - v.since) + '</td><td>' + rate(v.kbps) + '</td><td class="hm">' + bytes(v.bytes) + '</td>' +
+              '<td style="text-align:right">' + (v.canKick ? '<button class="danger" data-kick="' + esc(v.id) + '" title="Close this viewer\'s WebRTC connection">Disconnect</button>' : '') + '</td></tr>';
+          }).join('') + '</table>' : '<div class="empty" style="padding:30px">Nobody is watching the web player right now</div>') +
+          '<div class="note" style="margin-top:8px">HLS viewers are counted from their requests, so two people behind the same router on the same kind of browser show as one. A disconnected WebRTC viewer\'s player tries again by itself, falling back to HLS.</div>';
+        $$('[data-kick]', body).forEach(function (b) { b.onclick = function () { b.disabled = true; call('POST', 'api/viewers/' + b.dataset.kick + '/disconnect').then(function (x) { toast(x.ok ? 'Disconnected' : x.error, x.ok); load(); }); }; });
+      });
+    };
+    load();
+    clearInterval(viewersTimer);
+    viewersTimer = setInterval(load, 2000);
+  }
+
   function showRecordings() {
     call('GET', 'api/recordings').then(function (r) {
       var list = r.recordings || [];
@@ -898,8 +1017,9 @@
     d = d || { type: 'youtube', name: '', connect: ST.platforms.youtube.connected ? 'api' : 'key', armed: true, url: '', title: '{weekday} Service - {date}', description: '', privacy: 'public', video: { mode: 'encode', height: 1080, fps: 0, bitrate: 0, preset: 'veryfast' }, audio: { mode: 'copy', bitrate: 256 } };
     var html = '<div class="mh">' + (id ? 'Edit ' + esc(d.name) : 'Add destination') + '</div><div class="mb" id="dEd">' +
       '<div class="msec">Where</div>' +
-      '<div class="fgrid"><label class="fld wide"><span>Type</span>' + segH('type', [['youtube', 'YouTube'], ['facebook', 'Facebook'], ['rtmp', 'RTMP'], ['srt', 'SRT']], d.type) + '</label>' +
-      '<label class="fld"><span>Name</span><input data-f="name" value="' + esc(d.name) + '" placeholder="' + TYPE_NAME[d.type] + '"></label>' +
+      '<div class="fgrid"><label class="fld wide"><span>Type</span>' + segH('type', [['youtube', 'YouTube'], ['facebook', 'Facebook'], ['rtmp', 'RTMP'], ['srt', 'SRT'], ['ndi', 'NDI']], d.type) + '</label>' +
+      '<label class="fld"><span id="fNameL">Name</span><input data-f="name" value="' + esc(d.name) + '" placeholder="' + TYPE_NAME[d.type] + '"></label>' +
+      '<div class="fld wide note" id="fNdiNote"></div>' +
       '<label class="fld" id="fConn"><span>Connect with</span>' + segH('connect', [['api', 'Account'], ['key', 'Stream key']], d.connect) + '</label>' +
       '<label class="fld wide" id="fUrl"><span id="fUrlL">Server</span><input data-f="url" value="' + esc(d.url) + '" spellcheck="false" autocomplete="off"></label>' +
       '<label class="fld wide" id="fKey"><span>Stream key</span><input data-f="key" type="password" autocomplete="new-password" spellcheck="false" placeholder="' + (d.hasKey ? 'Saved. Type to replace it' : 'Paste the stream key') + '"></label>' +
@@ -911,13 +1031,13 @@
       '<label class="fld" id="fPriv"><span>Privacy</span><select data-f="privacy">' + opts([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], d.privacy) + '</select></label>' +
       '</div>' +
       '<div class="msec">Video</div>' +
-      '<div class="fgrid"><label class="fld wide"><span>Encoding</span>' + segH('vmode', [['encode', 'Encode for this destination'], ['original', 'Send the original (no CPU)']], d.video.mode) + '</label>' +
+      '<div class="fgrid"><label class="fld wide" id="fVmode"><span>Encoding</span>' + segH('vmode', [['encode', 'Encode for this destination'], ['original', 'Send the original (no CPU)']], d.video.mode) + '</label>' +
       '<label class="fld enc"><span>Resolution</span><select data-f="height">' + opts(HEIGHTS, d.video.height) + '</select></label>' +
       '<label class="fld enc"><span>Frame rate</span><select data-f="fps">' + opts(FPSES, d.video.fps) + '</select></label>' +
-      '<label class="fld enc"><span>Bitrate (kb/s, 0 = auto)</span><input data-f="bitrate" type="number" min="0" max="60000" step="250" value="' + (d.video.bitrate || 0) + '"></label>' +
-      '<label class="fld enc"><span>Quality / CPU</span><select data-f="preset">' + opts(PRESETS, d.video.preset) + '</select></label></div>' +
-      '<div class="msec">Audio</div>' +
-      '<div class="fgrid"><label class="fld wide"><span>Audio</span>' + segH('amode', [['copy', 'Original when it is AAC (best)'], ['aac', 'Always re-encode AAC']], d.audio.mode) + '</label>' +
+      '<label class="fld enc notndi"><span>Bitrate (kb/s, 0 = auto)</span><input data-f="bitrate" type="number" min="0" max="60000" step="250" value="' + (d.video.bitrate || 0) + '"></label>' +
+      '<label class="fld enc notndi"><span>Quality / CPU</span><select data-f="preset">' + opts(PRESETS, d.video.preset) + '</select></label></div>' +
+      '<div class="msec notndi">Audio</div>' +
+      '<div class="fgrid notndi"><label class="fld wide"><span>Audio</span>' + segH('amode', [['copy', 'Original when it is AAC (best)'], ['aac', 'Always re-encode AAC']], d.audio.mode) + '</label>' +
       '<label class="fld"><span>AAC bitrate when encoding</span><select data-f="abitrate">' + opts([[128, '128 kb/s'], [160, '160 kb/s'], [192, '192 kb/s'], [256, '256 kb/s'], [320, '320 kb/s']], d.audio.bitrate) + '</select></label>' +
       '<div class="fld wide note" id="fANote"></div></div>' +
       '<div class="msec">Go live</div>' +
@@ -945,10 +1065,21 @@
       var pc = plat ? ST.platforms[type] : null;
       $('#fApiNote').classList.toggle('hide', !api);
       $('#fApiNote').innerHTML = api ? (pc.connected ? 'Go live creates a new ' + TYPE_NAME[type] + ' broadcast on <b>' + esc(type === 'youtube' ? pc.channelTitle : pc.pageName) + '</b>. Stop ends it.' : '<span class="bad">' + TYPE_NAME[type] + ' is not connected yet.</span> Connect it in Settings › ' + TYPE_NAME[type] + ', or use a stream key.') : '';
-      var orig = segVal(root, 'vmode') === 'original';
+      var isNdi = type === 'ndi';
+      var orig = !isNdi && segVal(root, 'vmode') === 'original';
       $$('.enc', root).forEach(function (x) { x.classList.toggle('hide', orig); });
+      $$('.notndi', root).forEach(function (x) { x.classList.toggle('hide', isNdi || (orig && x.classList.contains('enc'))); });
+      $('#fVmode').classList.toggle('hide', isNdi);
+      $('#fUrl').classList.toggle('hide', api || isNdi);
+      $('#fKey').classList.toggle('hide', api || type === 'srt' || isNdi);
+      $('#fNameL').textContent = isNdi ? 'NDI source name' : 'Name';
+      $('#fNdiNote').classList.toggle('hide', !isNdi);
+      var nm = ($('[data-f=name]', root).value || 'Program').replace(/[()]/g, '');
+      $('#fNdiNote').innerHTML = !S.ndi.available ? '<span class="bad">NDI is not available in this container: ' + esc(S.ndi.why) + '</span>' :
+        '<span>Shows up on the network as <b>' + esc(S.hostname.toUpperCase() + ' (' + nm + ')') + '</b> for BroadcastDecode, vMix, OBS and other NDI receivers. Decoding the feed for NDI uses some CPU; full resolution NDI uses about 100–150 Mb/s of network per receiver.</span>';
       $('#fANote').innerHTML = type === 'facebook' ? 'Facebook recommends 128 kb/s AAC and may reject more than 256 kb/s.' : type === 'youtube' ? 'YouTube re-encodes audio to AAC 128 kb/s or Opus for viewers; a higher upload bitrate still gives it a cleaner source.' : '';
     }
+    $('[data-f=name]', root).addEventListener('input', function () { if (segVal(root, 'type') === 'ndi') refresh(); });
     wireSegs(root, function (name, v) {
       if (name === 'type') { var nm = $('[data-f=name]', root); nm.placeholder = TYPE_NAME[v]; if (v === 'youtube' || v === 'facebook') { var cn = ST.platforms[v].connected ? 'api' : 'key'; $$('[data-seg=connect] button', root).forEach(function (b) { b.classList.toggle('on', b.dataset.v === cn); }); } }
       refresh();
@@ -1064,16 +1195,22 @@
   };
 
   PANES.dests = function () {
-    var ds = S.settings.destinations;
+    var ds = S.settings.destinations, y = ST.platforms.youtube, f = ST.platforms.facebook;
+    var acct = function (pane, name, ok, who, attn) {
+      return set(name, attn ? '<span class="bad">Needs to be connected again</span>' : ok ? 'Connected · ' + esc(who || '') : 'Not connected. Destinations can use a stream key instead.', '<button data-goto="' + pane + '"' + (ok && !attn ? '' : ' class="on"') + '>' + (ok ? 'Settings' : 'Set up') + '</button>', pane === 'youtube' ? 'first' : '');
+    };
     return '<div class="note pnote">Each destination gets its own encode, so each can have the resolution and bitrate it needs. Encoding uses CPU: watch the CPU number in the top bar when you add more.</div>' +
+      '<div class="card"><h2>Accounts</h2>' + acct('youtube', 'YouTube', y.connected, y.channelTitle, y.needsReconnect) + acct('facebook', 'Facebook', f.connected, f.pageName, f.needsReconnect) +
+      '<div class="note" style="margin-top:6px">With an account connected, Go live creates the broadcast with the Stream info title and Stop ends it.</div></div>' +
       '<div class="card"><h2>Destinations</h2>' + (ds.length ? ds.map(function (d, i) {
-        return '<div class="set' + (i ? '' : ' first') + '"><div class="sl"><b>' + esc(d.name) + '</b><span>' + TYPE_NAME[d.type] + (d.connect === 'api' ? ' account' : ' stream key') + ' · ' + (d.video.mode === 'original' ? 'original video' : (d.video.height ? d.video.height + 'p' : 'input size') + (d.video.fps ? d.video.fps : '')) + (d.armed ? '' : ' · not in Go live') + '</span></div>' +
+        return '<div class="set' + (i ? '' : ' first') + '"><div class="sl"><b>' + esc(d.name) + '</b><span>' + TYPE_NAME[d.type] + (d.type === 'ndi' ? ' output' : d.connect === 'api' ? ' account' : d.type === 'srt' ? '' : ' stream key') + ' · ' + (d.video.mode === 'original' ? 'original video' : (d.video.height ? d.video.height + 'p' : 'input size') + (d.video.fps ? d.video.fps : '')) + (d.armed ? '' : ' · not in Go live') + '</span></div>' +
           '<div class="sc"><button data-mv="' + d.id + '" data-dir="-1"' + (i ? '' : ' disabled') + ' title="Move up">↑</button><button data-mv="' + d.id + '" data-dir="1"' + (i < ds.length - 1 ? '' : ' disabled') + ' title="Move down">↓</button><button data-ed="' + d.id + '">Edit</button></div></div>';
       }).join('') : '<div class="note">No destinations yet.</div>') +
       '<div class="set"><div class="sl"></div><div class="sc"><button class="on" id="addD">Add destination</button></div></div></div>' +
       '<div class="card"><h2>CPU</h2><div class="note">This server: ' + esc(S.cpuModel || 'unknown CPU') + ' with ' + ST.cpu.cores + ' threads. A 1080p30 encode at "Very fast" typically uses 2–4 threads; 720p30 about half that. "Send the original" uses almost none, so use it for the destination that can take OBS\'s feed as it is.</div></div>';
   };
   PANES.dests.wire = function (p) {
+    $$('[data-goto]', p).forEach(function (b) { b.onclick = function () { var t = $('#side [data-pane="' + b.dataset.goto + '"]'); if (t) t.click(); }; });
     $('#addD', p).onclick = function () { editDest(null); };
     $$('[data-ed]', p).forEach(function (b) { b.onclick = function () { editDest(b.dataset.ed); }; });
     $$('[data-mv]', p).forEach(function (b) { b.onclick = function () { call('POST', 'api/destinations/' + b.dataset.mv + '/move', { dir: Number(b.dataset.dir) }); }; });
@@ -1104,12 +1241,9 @@
   PANES.web.wire = function (p) { $('#pubSave', p).onclick = function () { saveSection('network', { publicUrl: $('[data-f=publicUrl]', p).value, publicHosts: S.settings.network.publicHosts }).then(function (r) { if (r.ok) { paneDirty = false; } }); }; };
 
   PANES.ndi = function () {
-    var n = S.settings.ndi, o = S.settings.ndiOut;
+    var n = S.settings.ndi;
     return '<div class="note pnote">NDI finds sources with mDNS on the same network. Sources on another VLAN need a Discovery Server or their IP address below.' + (S.ndi.available ? '' : '<div class="errbox" style="margin-top:8px">NDI is not available: ' + esc(S.ndi.why) + '</div>') + '</div>' +
-      card('NDI output', set('Publish the feed as NDI', 'The incoming feed shows up on the network as an NDI source (for BroadcastDecode, vMix, OBS…). Decoding uses some CPU.', segH('enabled', [['true', 'On'], ['false', 'Off']], String(o.enabled)), 'first') +
-        set('Source name', 'Appears as ' + esc(S.hostname.toUpperCase()) + ' (name)', inp('name', o.name)) +
-        set('Resolution', '', '<select data-f="height">' + opts(HEIGHTS, o.height) + '</select>') +
-        set('Frame rate', '', '<select data-f="fps">' + opts(FPSES, o.fps) + '</select>'), 'ndiOut') +
+      '<div class="card"><h2>NDI output</h2><div class="note">To send the feed out as NDI, add a destination of type <b>NDI</b> on the main page (+ Add destination). You can add several, each with its own name and resolution.</div></div>' +
       card('Discovery', set('Discovery Server', 'IP address of an NDI Discovery Server, if you use one', inp('discoveryServer', n.discoveryServer, 'wide', 'placeholder="192.168.1.10"'), 'first') +
         set('Extra source IPs', 'IP addresses of NDI senders on other networks, comma separated', inp('extraIps', n.extraIps, 'wide')) +
         set('Groups', 'Leave empty for the default "Public" group', inp('groups', n.groups, 'wide')), 'ndi') +
@@ -1206,7 +1340,6 @@
         ex('POST', '/end', 'Stop every destination (ends YouTube/Facebook broadcasts)') +
         ex('POST', '/destinations/<name or id>/start', 'Also <code>stop</code> and <code>toggle</code>. Name, id or number (1 = first)') +
         ex('POST', '/web/start', 'Web player: <code>start</code>, <code>stop</code>, <code>toggle</code>') +
-        ex('POST', '/ndi-out/toggle', 'NDI output: <code>start</code>, <code>stop</code>, <code>toggle</code>') +
         ex('POST', '/recording/on', 'Recording: <code>on</code>, <code>off</code>, <code>toggle</code>') +
         ex('POST', '/input/source/ndi', 'Switch the input: <code>stream</code> or <code>ndi</code>') +
         ex('POST', '/stream/preset/<name, id or number>', 'Load a Stream info preset (updates live broadcasts)') +

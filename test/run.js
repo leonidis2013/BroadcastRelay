@@ -341,6 +341,47 @@ test('app: titles from 0.1.x move into Stream info', async () => {
     assert.deepStrictEqual(c.destinations.map((d) => d.useShared), [true, false, true]);
   } finally { p.kill(); }
 });
+test('app: NDI outputs are destinations; loudness history; viewer list', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1) }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 4500));
+    let r = await req(port, 'POST', '/api/destinations', { type: 'ndi', name: 'Program (main)', video: { height: 720, bitrate: 9000 } });
+    assert.ok(r.j.ok);
+    r = await req(port, 'POST', '/api/destinations', { type: 'ndi', name: 'program main' });
+    assert.strictEqual(r.status, 400, 'two NDI outputs cannot share a name');
+    r = await req(port, 'POST', '/api/destinations', { type: 'ndi', name: 'Lobby', video: { height: 540 } });
+    r = await req(port, 'GET', '/api/state');
+    const nd = r.j.settings.destinations.filter((d) => d.type === 'ndi');
+    assert.deepStrictEqual(nd.map((d) => d.name), ['Program main', 'Lobby'], 'brackets are removed from NDI names');
+    assert.strictEqual(r.j.settings.ndiOut, undefined);
+    r = await req(port, 'POST', '/api/v1/destinations/Lobby/start');
+    assert.ok(r.j.ok, JSON.stringify(r.j));
+    await new Promise((res) => setTimeout(res, 3500));
+    r = await req(port, 'GET', '/api/state');
+    const lobby = r.j.status.destinations.find((d) => d.id === nd[1].id);
+    assert.strictEqual(lobby.state, 'live', JSON.stringify(lobby));
+    assert.ok(/^NDI · .*\(Lobby\) · 960×540/.test(lobby.desc), lobby.desc);
+    assert.strictEqual(lobby.receivers, 1);
+    r = await req(port, 'GET', '/api/levels/history?seconds=60');
+    assert.ok(r.j.points.length >= 3, 'history points: ' + r.j.points.length);
+    assert.strictEqual(r.j.points[0].length, 4);
+    r = await req(port, 'GET', '/api/viewers');
+    assert.ok(r.j.viewers.some((v) => v.kind === 'WebRTC' && v.device === 'TV · Chrome' && v.lan));
+    assert.ok(r.j.viewers.some((v) => v.kind === 'HLS' && !v.lan));
+  } finally { p.kill(); }
+});
+test('app: the 0.2 NDI output setting becomes an NDI destination', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000), data = tmp('ndimig');
+  fs.writeFileSync(path.join(data, 'config.json'), JSON.stringify({ ndiOut: { enabled: true, name: 'Sanctuary', height: 720, fps: 30 }, destinations: [] }));
+  const p = spawn(process.execPath, [path.join(root, 'server.js')], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1), DATA_DIR: data, MEDIAMTX: '/nonexistent', NDI_BRIDGE: '/nonexistent' }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 1500));
+    const c = JSON.parse(fs.readFileSync(path.join(data, 'config.json'), 'utf8'));
+    assert.strictEqual(c.ndiOut, undefined);
+    assert.deepStrictEqual(c.destinations.map((d) => [d.type, d.name, d.video.height, d.video.fps]), [['ndi', 'Sanctuary', 720, 30]]);
+  } finally { p.kill(); }
+});
 test('app: sign-in and the Companion token', async () => {
   const port = 20000 + Math.floor(Math.random() * 20000), data = tmp('app');
   const p = spawn(process.execPath, [path.join(root, 'server.js')], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1), DATA_DIR: data, MEDIAMTX: '/nonexistent', NDI_BRIDGE: '/nonexistent' }), stdio: 'ignore' });

@@ -63,7 +63,6 @@ const DEFAULTS = {
   destinations: [],
   web: { enabled: true, mode: 'encode', height: 720, fps: 0, bitrate: 0, preset: 'veryfast', audioBitrate: 160, title: 'Live', offlineText: 'The stream will start soon.' },
   ndi: { discoveryServer: '', extraIps: '', groups: '' },
-  ndiOut: { enabled: false, name: 'Program', height: 0, fps: 0 },
   recording: { enabled: true, segmentMinutes: 30, keepDays: 14, maxGB: 0 },
   youtube: { clientId: '', clientSecret: '', refreshToken: '', channelId: '', channelTitle: '', streamId: '', needsReconnect: false, connectError: '' },
   facebook: { appId: '', clientToken: '', appSecret: '', userToken: '', pageId: '', pageName: '', pageToken: '', pages: [], graphVersion: 'v23.0', needsReconnect: false, connectError: '', pagesError: '' },
@@ -104,6 +103,11 @@ let cfg = clone(DEFAULTS);
     }
   }
   if (!Array.isArray(cfg.stream.presets)) cfg.stream.presets = [];
+  // 0.3.0: the fixed NDI output became a destination type
+  if (saved.ndiOut && (saved.ndiOut.enabled || (saved.ndiOut.name && saved.ndiOut.name !== 'Program')) && !cfg.destinations.some((d) => d.type === 'ndi')) {
+    cfg.destinations.push({ id: crypto.randomBytes(4).toString('hex'), name: String(saved.ndiOut.name || 'Program').replace(/[()]/g, '') || 'Program', type: 'ndi', armed: true, connect: 'key', url: '', key: '', useShared: true, title: '', description: '', privacy: 'public',
+      video: { mode: 'encode', height: Number(saved.ndiOut.height) || 0, fps: Number(saved.ndiOut.fps) || 0, bitrate: 0, preset: 'veryfast' }, audio: { mode: 'copy', bitrate: 256 } });
+  }
 }
 const secrets = Secrets.create(path.join(DATA, 'secret.key'), { masterKey: process.env.BROADCASTRELAY_MASTER_KEY });
 if (!cfg.api.token) cfg.api.token = secrets.enc(crypto.randomBytes(18).toString('base64url'));
@@ -172,11 +176,34 @@ const mtx = MediaMTX.create({ bin: BIN.mediamtx, dataDir: DATA, recordDir: RECOR
 if (DEMO) { mtx.proc.o.spawn = spawnFn; mtx.pathInfo = async (n) => Demo.pathInfo(n, cfg.input.source === 'ndi' && ndi.ingest.info().state === 'live'); mtx.connStats = async () => Demo.connStats(); }
 
 let lastLevels = null, levelsSentAt = 0;
+
+// ---------- loudness history: one point per second, the last hour ----------
+const HISTORY_SECONDS = 3600;
+const history = [];
+const r1 = (x) => (x == null || x <= -120 ? null : Math.round(x * 10) / 10);
+function addHistory(v) {
+  const t = Math.floor(Date.now() / 1000);
+  const tp = v.tpk && v.tpk.length ? Math.max.apply(null, v.tpk) : null;
+  const last = history[history.length - 1];
+  if (last && last.t === t) {
+    last.m = Math.max(last.m, v.m); last.s = v.s; last.i = v.i;
+    if (tp != null) last.tp = last.tp == null ? tp : Math.max(last.tp, tp);
+  } else {
+    history.push({ t, m: v.m, s: v.s, i: v.i, tp });
+    while (history.length && history[0].t <= t - HISTORY_SECONDS) history.shift();
+  }
+}
+/** [[unix second, momentary max, short-term, true peak max], ...] for the last `seconds`. */
+function historySince(seconds) {
+  const from = Math.floor(Date.now() / 1000) - seconds;
+  return history.filter((h) => h.t > from).map((h) => [h.t, r1(h.m), r1(h.s), r1(h.tp)]);
+}
 const meter = Meter.create({
   ffmpeg: BIN.ffmpeg,
   inputUrl: () => rtsp('live'),
   onLevels: (v) => {
     lastLevels = v;
+    addHistory(v);
     const now = Date.now();
     if (now - levelsSentAt >= 90) { levelsSentAt = now; broadcast('levels', v); }
   }
@@ -184,9 +211,9 @@ const meter = Meter.create({
 if (DEMO) meter.proc.o.spawn = spawnFn;
 
 const ndi = Ndi.create({ bridge: BIN.bridge, ffmpeg: BIN.ffmpeg, dataDir: DATA, runDir: RUN_DIR, settings: () => cfg, rtspUrl: rtsp, info: () => feed.info || {} });
-if (DEMO) { for (const p of ndi.ingest.procs.concat(ndi.output.procs)) p.o.spawn = spawnFn; }
+if (DEMO) { for (const p of ndi.ingest.procs) p.o.spawn = spawnFn; }
+if (DEMO) ndi.available = () => true; // pretend NDI works in demo mode
 ndi.ingest.on('change', pushStatusSoon);
-ndi.output.on('change', pushStatusSoon);
 
 const webProc = new Proc({
   name: 'Web player', cmd: BIN.ffmpeg, progress: true, spawn: spawnFn,
@@ -204,7 +231,11 @@ function run(id) {
   let r = runs.get(id);
   if (!r) {
     r = { want: false, session: null, phase: '', error: '' };
-    r.proc = new Proc({ name: 'Destination ' + id, cmd: BIN.ffmpeg, progress: true, spawn: spawnFn, args: () => destArgs(id) });
+    const d0 = dest(id);
+    if (d0 && d0.type === 'ndi') {
+      r.proc = ndi.output(id, () => { const d = dest(id) || {}; return { name: d.name, height: (d.video || {}).height, fps: (d.video || {}).fps }; });
+      if (DEMO) for (const x of r.proc.procs) x.o.spawn = spawnFn;
+    } else r.proc = new Proc({ name: 'Destination ' + id, cmd: BIN.ffmpeg, progress: true, spawn: spawnFn, args: () => destArgs(id) });
     r.proc.on('state', pushStatusSoon);
     runs.set(id, r);
   }
@@ -274,6 +305,9 @@ async function startDest(id) {
     }
     r.phase = '';
     if (!r.want) { endBroadcast(d, r); return { ok: true }; }
+  } else if (d.type === 'ndi') {
+    if (!ndi.available()) { r.error = 'NDI is not available in this container: ' + ndi.whyNot(); pushStatus(); return { ok: false, error: r.error }; }
+    r.want = true;
   } else {
     try { destUrl(d, r); } catch (e) { r.error = e.message; pushStatus(); return { ok: false, error: e.message }; }
     r.want = true;
@@ -305,12 +339,19 @@ function destState(d) {
   const p = r.proc.info();
   let st = r.phase || (r.want ? (feed.ready && feed.info ? p.state : 'waiting') : (r.error ? 'error' : 'off'));
   if (st === 'off' && r.want) st = 'waiting';
-  let plan = null;
-  try { plan = F.plan(d.video, d.audio, feed.info || {}); } catch (e) { /* none */ }
+  let plan = null, desc = '';
+  if (d.type === 'ndi') {
+    const pl = p.plan || (feed.info ? F.plan({ mode: 'encode', height: d.video.height, fps: d.video.fps }, {}, feed.info) : null);
+    desc = 'NDI · ' + os.hostname().toUpperCase() + ' (' + d.name + ')' + (pl ? ' · ' + pl.width + '×' + pl.height + ' ' + Math.round(pl.fps * 100) / 100 + 'fps' : '');
+  } else {
+    try { plan = F.plan(d.video, d.audio, feed.info || {}); desc = F.describe(plan); } catch (e) { /* none */ }
+  }
+  const pids = p.pids || (p.pid ? [p.pid] : []);
   return {
     state: st, error: r.error || (r.want ? p.error : ''), since: p.since, retryIn: p.retryIn,
-    stats: p.stats, cpu: p.pid ? sys.pidPct(p.pid) : null, tail: p.tail,
-    desc: plan ? F.describe(plan) : '', reasons: plan ? plan.reasons : [],
+    stats: p.stats, cpu: pids.length ? pids.reduce((a, x) => a + (sys.pidPct(x) || 0), 0) : null, tail: p.tail,
+    receivers: d.type === 'ndi' ? p.connections : undefined,
+    desc, reasons: plan ? plan.reasons : [],
     watchUrl: r.session ? r.session.watchUrl : '', live: st === 'live',
     infoError: r.infoError || '', ownInfo: d.useShared === false
   };
@@ -326,7 +367,7 @@ async function onInputUp() {
   feed.probing = false;
   feed.info = Object.assign({ videoCodec: feed.path.videoCodec, audioCodec: feed.path.audioCodec }, pr || {});
   if (!feed.path.audioCodec) feed.info.audioCodec = null;
-  const all = [meter.proc, webProc].concat(ndi.output.procs);
+  const all = [meter.proc, webProc];
   for (const r of runs.values()) all.push(r.proc);
   // a new source (OBS reconnected, maybe with other settings): start everything fresh
   for (const p of all) if (p.wanted) p.restart();
@@ -337,7 +378,6 @@ function startFeedConsumers() {
   if (!feed.ready || !feed.info) return;
   if (feed.info.audioCodec && !meter.proc.wanted) meter.proc.start();
   if (cfg.web.enabled && !webProc.wanted) webProc.start();
-  if (cfg.ndiOut.enabled && ndi.available()) ndi.output.start();
   for (const d of cfg.destinations) { const r = runs.get(d.id); if (r && r.want && !r.phase && !r.proc.wanted) r.proc.start(); }
 }
 function onInputDown() {
@@ -346,7 +386,6 @@ function onInputDown() {
   meter.proc.stop(); meter.clear(); lastLevels = null;
   broadcast('levels', null);
   webProc.stop();
-  ndi.output.stop();
   for (const r of runs.values()) r.proc.stop(); // r.want stays: they come back with the feed
   pushStatus();
 }
@@ -369,11 +408,69 @@ function recordings(force) {
   return recCache.list;
 }
 
-const hlsClients = new Map();
+// ---------- web player viewers ----------
+// WebRTC: each viewer is a MediaMTX session; we tag it (?br=<id>) when proxying the WHEP request,
+// so the list can show who it is. HLS: each viewer (address + browser) is counted from its requests.
+// Every viewer gets its own connection, but they all share the one web encode.
+const webrtcViewers = new Map(); // id -> { id, ip, ua, since, mtxId, bytes, kbps, lastBytes, lastAt, seenAt }
+const hlsViewers = new Map();    // ip|ua -> { id, ip, ua, since, last, bytes, kbps, win: [[time, bytes]] }
+
+function deviceOf(ua) {
+  ua = String(ua || '');
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Android phone' : 'Android tablet')
+    : /CrOS/.test(ua) ? 'Chromebook' : /Windows/.test(ua) ? 'Windows' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /SmartTV|SMART-TV|Tizen|Web0S|webOS|BRAVIA|Roku|AppleTV|AFT\w/.test(ua) ? 'TV' : /Linux/.test(ua) ? 'Linux' : '';
+  const br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /VLC|Lavf|ffmpeg/i.test(ua) ? 'Media player' : '';
+  return [os, br].filter(Boolean).join(' · ') || 'Unknown device';
+}
+const isPrivate = (ip) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|::1$|fd|fe80|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/i.test(String(ip).replace(/^::ffff:/, ''));
+
+function noteHls(req, bytes) {
+  const ip = clientIp(req), ua = String(req.headers['user-agent'] || '').slice(0, 300), key = ip + '|' + ua, now = Date.now();
+  let v = hlsViewers.get(key);
+  if (!v) { v = { id: 'h' + crypto.createHash('sha1').update(key).digest('hex').slice(0, 10), ip, ua, since: now, last: now, bytes: 0, win: [] }; hlsViewers.set(key, v); }
+  v.last = now; v.bytes += bytes;
+  v.win.push([now, bytes]);
+  while (v.win.length && v.win[0][0] < now - 12000) v.win.shift();
+}
+async function refreshWebrtc() {
+  const now = Date.now();
+  const list = await mtx.api('/v3/webrtcsessions/list?itemsPerPage=1000');
+  if (!list) return;
+  const byTag = new Map();
+  for (const it of list.items || []) {
+    const m = /(?:^|&)br=([\w-]+)/.exec(it.query || '');
+    if (m) byTag.set(m[1], it);
+  }
+  for (const [id, v] of webrtcViewers) {
+    const it = byTag.get(id);
+    if (!it) { if (now - v.since > 15000) webrtcViewers.delete(id); continue; }
+    v.mtxId = it.id; v.state = it.state || (it.peerConnectionEstablished ? 'read' : '');
+    const cand = /(?:udp|tcp)\/([0-9a-f.:]+)\//i.exec(it.remoteCandidate || '');
+    if (cand) v.mediaIp = cand[1];
+    const bytes = Number(it.bytesSent) || 0;
+    if (v.lastAt && now > v.lastAt) v.kbps = Math.max(0, Math.round((bytes - v.lastBytes) * 8 / (now - v.lastAt)));
+    v.lastBytes = bytes; v.lastAt = now; v.bytes = bytes; v.seenAt = now;
+  }
+}
+function viewerList() {
+  const now = Date.now();
+  for (const [k, v] of hlsViewers) if (now - v.last > 20000) hlsViewers.delete(k);
+  const out = [];
+  for (const v of webrtcViewers.values()) {
+    if (!v.mtxId) continue;
+    out.push({ id: v.id, kind: 'WebRTC', ip: v.ip, lan: isPrivate(v.ip), device: deviceOf(v.ua), since: v.since, kbps: v.kbps || 0, bytes: v.bytes || 0, canKick: true });
+  }
+  for (const v of hlsViewers.values()) {
+    const span = v.win.length ? Math.max(4000, now - v.win[0][0]) : 0;
+    const kbps = span ? Math.round(v.win.reduce((a, w) => a + w[1], 0) * 8 / span) : 0;
+    out.push({ id: v.id, kind: 'HLS', ip: v.ip, lan: isPrivate(v.ip), device: deviceOf(v.ua), since: v.since, kbps, bytes: v.bytes, canKick: false });
+  }
+  return out.sort((a, b) => a.since - b.since);
+}
 function viewers(webrtcReaders) {
-  const cut = Date.now() - 20000;
-  for (const [k, t] of hlsClients) if (t < cut) hlsClients.delete(k);
-  return { webrtc: webrtcReaders, hls: hlsClients.size, total: webrtcReaders + hlsClients.size };
+  const l = viewerList();
+  const w = l.filter((v) => v.kind === 'WebRTC').length || webrtcReaders, h = l.filter((v) => v.kind === 'HLS').length;
+  return { webrtc: w, hls: h, total: w + h, kbps: l.reduce((a, v) => a + v.kbps, 0) };
 }
 
 let webrtcPath = { readers: 0 }, webPath = { ready: false };
@@ -399,6 +496,7 @@ async function tick() {
       feed.conn = await mtx.connStats(p);
     }
     [webPath, webrtcPath] = await Promise.all([mtx.pathInfo('web'), mtx.pathInfo('webrtc')]);
+    if (webrtcViewers.size) await refreshWebrtc();
   }
   pushStatus();
 }
@@ -411,7 +509,7 @@ function status() {
   const w = webProc.info();
   let webPlan = null;
   try { webPlan = feed.info ? F.plan({ mode: cfg.web.mode, height: cfg.web.height, fps: cfg.web.fps, bitrate: cfg.web.bitrate }, { mode: 'aac', bitrate: cfg.web.audioBitrate }, feed.info) : null; } catch (e) { /* none */ }
-  const ndiIn = ndi.ingest.info(), ndiOut = ndi.output.info();
+  const ndiIn = ndi.ingest.info();
   return {
     now: Date.now(),
     cpu: { total: sys.totalPct(), cores: sys.cores() },
@@ -429,7 +527,6 @@ function status() {
     },
     recording: { enabled: cfg.recording.enabled, active: !!(cfg.recording.enabled && feed.ready), writable: Rec.writable(RECORD_DIR), dir: RECORD_DIR, disk: sys.disk(RECORD_DIR), used, count: recs.length },
     web: { enabled: cfg.web.enabled, state: cfg.web.enabled ? (feed.ready ? w.state : 'waiting') : 'off', error: w.error, stats: w.stats, cpu: procCpu(webProc), desc: webPlan ? F.describe(webPlan) : '', viewers: viewers(webrtcPath.readers || 0), hlsReady: !!webPath.ready, retryIn: w.retryIn },
-    ndiOut: { enabled: cfg.ndiOut.enabled, available: ndi.available(), state: cfg.ndiOut.enabled ? (feed.ready ? ndiOut.state : 'waiting') : 'off', error: ndiOut.error, connections: ndiOut.connections, plan: ndiOut.plan, cpu: ndiOut.pids.reduce((a, p) => a + (sys.pidPct(p) || 0), 0) },
     destinations: cfg.destinations.map((d) => Object.assign({ id: d.id }, destState(d))),
     stream: { title: infoFor({}).title, description: infoFor({}).description, broadcasts: cfg.destinations.filter((d) => d.connect === 'api' && runs.get(d.id) && runs.get(d.id).session).length },
     platforms: {
@@ -482,15 +579,16 @@ const FPSES = [0, 24, 25, 30, 50, 60];
 
 function normDest(d, old) {
   d = d || {}; old = old || {};
-  const type = oneOf(d.type, ['youtube', 'facebook', 'rtmp', 'srt'], old.type || 'rtmp');
+  const type = oneOf(d.type, ['youtube', 'facebook', 'rtmp', 'srt', 'ndi'], old.type || 'rtmp');
   const v = d.video || {}, a = d.audio || {};
   let key = old.key || '';
   if (typeof d.key === 'string' && d.key.trim()) key = secrets.enc(d.key.trim());
   if (d.clearKey) key = '';
-  const names = { youtube: 'YouTube', facebook: 'Facebook', rtmp: 'RTMP', srt: 'SRT' };
+  const names = { youtube: 'YouTube', facebook: 'Facebook', rtmp: 'RTMP', srt: 'SRT', ndi: 'Program' };
   return {
     id: old.id || rid(),
-    name: str(d.name, 40) || names[type],
+    // an NDI destination's name is its NDI source name, which can't contain brackets
+    name: (type === 'ndi' ? str(d.name, 40).replace(/[()]/g, '').trim() : str(d.name, 40)) || names[type],
     type,
     armed: d.armed !== false,
     connect: type === 'youtube' || type === 'facebook' ? oneOf(d.connect, ['api', 'key'], 'key') : 'key',
@@ -500,7 +598,7 @@ function normDest(d, old) {
     title: d.title !== undefined ? str(d.title, 100) : old.title || '',
     description: d.description !== undefined ? str(d.description, 5000) : old.description || '',
     privacy: oneOf(d.privacy, ['public', 'unlisted', 'private'], old.privacy || 'public'),
-    video: { mode: oneOf(v.mode, ['original', 'encode'], 'encode'), height: oneOf(Number(v.height), HEIGHTS, 720), fps: oneOf(Number(v.fps), FPSES, 0), bitrate: int(v.bitrate, 0, 60000, 0), preset: oneOf(v.preset, PRESETS, 'veryfast') },
+    video: { mode: type === 'ndi' ? 'encode' : oneOf(v.mode, ['original', 'encode'], 'encode'), height: oneOf(Number(v.height), HEIGHTS, 720), fps: oneOf(Number(v.fps), FPSES, 0), bitrate: int(v.bitrate, 0, 60000, 0), preset: oneOf(v.preset, PRESETS, 'veryfast') },
     audio: { mode: oneOf(a.mode, ['copy', 'aac'], 'copy'), bitrate: oneOf(Number(a.bitrate), [96, 128, 160, 192, 256, 320], 256) }
   };
 }
@@ -545,14 +643,6 @@ function saveSection(section, v) {
       offlineText: v.offlineText !== undefined ? str(v.offlineText, 300) : cfg.web.offlineText
     }; return null;
     case 'ndi': cfg.ndi = { discoveryServer: str(v.discoveryServer, 200), extraIps: str(v.extraIps, 500), groups: str(v.groups, 200) }; return null;
-    case 'ndiOut': cfg.ndiOut = {
-      enabled: v.enabled !== undefined ? !!v.enabled : cfg.ndiOut.enabled,
-      name: (v.name !== undefined ? str(v.name, 60).replace(/[()]/g, '') : cfg.ndiOut.name) || 'Program',
-      height: oneOf(Number(v.height), HEIGHTS, cfg.ndiOut.height),
-      fps: oneOf(Number(v.fps), FPSES, cfg.ndiOut.fps)
-    };
-      if (cfg.ndiOut.enabled && !ndi.available()) return 'NDI is not available in this container: ' + ndi.whyNot();
-      return null;
     case 'recording': cfg.recording = {
       enabled: v.enabled !== undefined ? !!v.enabled : cfg.recording.enabled,
       segmentMinutes: int(v.segmentMinutes, 1, 240, cfg.recording.segmentMinutes),
@@ -589,10 +679,6 @@ function afterSave(section, before) {
     if (!cfg.web.enabled) webProc.stop();
     else if (!webProc.wanted) startFeedConsumers();
     else if (JSON.stringify(before.web) !== JSON.stringify(cfg.web)) webProc.restart();
-  }
-  if (section === 'ndiOut') {
-    if (!cfg.ndiOut.enabled) ndi.output.stop();
-    else if (feed.ready) { if (JSON.stringify(before.ndiOut) !== JSON.stringify(cfg.ndiOut)) ndi.output.restart(); ndi.output.start(); }
   }
   if (section === 'ndi') { ndi.applyConfig(); }
 }
@@ -703,7 +789,7 @@ async function action(parts, method, body) {
     if (c === 'toggle') return on ? stopDest(d.id) : startDest(d.id);
     if (c === 'arm' || c === 'disarm') { d.armed = c === 'arm'; saveCfg(); pushState(); return { ok: true }; }
   }
-  const toggles = { web: 'web', 'ndi-out': 'ndiOut', recording: 'recording' };
+  const toggles = { web: 'web', recording: 'recording' };
   if (toggles[a] && ['start', 'stop', 'toggle', 'on', 'off'].includes(b)) {
     const cur = cfg[toggles[a]].enabled;
     return toggleSetting(toggles[a], b === 'toggle' ? !cur : b === 'start' || b === 'on');
@@ -730,7 +816,6 @@ function compactStatus() {
     loudness_integrated: lastLevels ? Math.round(lastLevels.i * 10) / 10 : null,
     recording: s.recording.active,
     web_state: s.web.state, web_viewers: s.web.viewers.total,
-    ndi_out_state: s.ndiOut.state,
     destinations_live: live, destinations_total: s.destinations.length,
     any_live: live > 0,
     stream_title: infoFor({}).title,
@@ -773,7 +858,7 @@ function serveFile(res, file, extra) {
 const clientIp = (req) => String(req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0] || req.socket.remoteAddress || '').trim();
 
 /** Forward a request to MediaMTX (HLS or WHEP), optionally rewriting the WHEP session Location. */
-function proxy(req, res, port, target, rewrite, cookies) {
+function proxy(req, res, port, target, rewrite, cookies, onDone) {
   const headers = {};
   for (const h of ['content-type', 'accept', 'if-match', 'range'].concat(cookies ? ['cookie'] : [])) if (req.headers[h]) headers[h] = req.headers[h];
   if (req.headers['content-length']) headers['content-length'] = req.headers['content-length'];
@@ -786,6 +871,7 @@ function proxy(req, res, port, target, rewrite, cookies) {
     }
     out['cache-control'] = out['cache-control'] || 'no-cache';
     res.writeHead(r.statusCode, out);
+    if (onDone) { let n = 0; r.on('data', (d) => { n += d.length; }); r.on('end', () => onDone(r.statusCode, n, r.headers)); }
     r.pipe(res);
   });
   up.on('timeout', () => up.destroy(new Error('timeout')));
@@ -808,16 +894,22 @@ function playerRoutes(req, res, u, isPublic) {
   if (req.method === 'GET' && p.startsWith('/hls/')) {
     const rest = p.slice(5);
     if (!/^[\w.\-/]+$/.test(rest) || rest.includes('..')) return send(res, 400, 'Bad path'), true;
-    if (/\.m3u8$/.test(rest)) hlsClients.set(clientIp(req), Date.now());
     // MediaMTX first redirects to ?cookieCheck=1 to see whether the player keeps cookies
-    proxy(req, res, cfg.ports.hls, '/web/' + rest + (u.search || ''), (loc) => { const m = /^\/web\/(.*)$/.exec(String(loc)); return m ? m[1].split('/').pop() : loc; }, true);
+    proxy(req, res, cfg.ports.hls, '/web/' + rest + (u.search || ''), (loc) => { const m = /^\/web\/(.*)$/.exec(String(loc)); return m ? m[1].split('/').pop() : loc; }, true,
+      (code, n) => { if (code < 300) noteHls(req, n); });
     return true;
   }
   if (p === '/whep' || p.startsWith('/whep/')) {
     if (!['POST', 'PATCH', 'DELETE', 'OPTIONS'].includes(req.method)) return send(res, 405, 'Method not allowed'), true;
     const rest = p.slice(5);
     if (rest && !/^\/[\w-]+$/.test(rest)) return send(res, 400, 'Bad path'), true;
-    proxy(req, res, cfg.ports.webrtc, '/webrtc/whep' + rest, whepRewrite('/whep'));
+    if (req.method === 'POST' && !rest) {
+      // a new WebRTC viewer: tag the session so the viewer list can tell who it is
+      const vid = rid() + rid();
+      proxy(req, res, cfg.ports.webrtc, '/webrtc/whep?br=' + vid, whepRewrite('/whep'), false, (code) => {
+        if (code === 201) webrtcViewers.set(vid, { id: vid, ip: clientIp(req), ua: String(req.headers['user-agent'] || '').slice(0, 300), since: Date.now() });
+      });
+    } else proxy(req, res, cfg.ports.webrtc, '/webrtc/whep' + rest, whepRewrite('/whep'));
     return true;
   }
   return false;
@@ -898,6 +990,8 @@ async function controlHandler(req, res) {
       if (b.id && !old) return send(res, 404, { ok: false, error: 'Unknown destination' });
       const d = normDest(b, old);
       if (d.type === 'srt' && !/^srt:\/\//.test(d.url)) return send(res, 400, { ok: false, error: 'An SRT address starts with srt://' });
+      if (d.type === 'ndi' && cfg.destinations.some((x) => x.type === 'ndi' && x.id !== d.id && x.name.toLowerCase() === d.name.toLowerCase())) return send(res, 400, { ok: false, error: 'Another NDI output is already called ' + d.name });
+      if (old && old.type !== d.type && runs.get(d.id)) { await stopDest(d.id); runs.delete(d.id); }
       if (d.type === 'rtmp' && !/^rtmps?:\/\//.test(d.url)) return send(res, 400, { ok: false, error: 'An RTMP address starts with rtmp:// or rtmps://' });
       if (old) {
         cfg.destinations[cfg.destinations.indexOf(old)] = d;
@@ -938,6 +1032,18 @@ async function controlHandler(req, res) {
       return send(res, r.ok ? 200 : 400, r);
     }
     if ((m = /^\/api\/stream\/presets\/([\w-]+)$/.exec(p)) && req.method === 'DELETE') return send(res, 200, deletePreset(m[1]));
+    if (p === '/api/levels/history' && req.method === 'GET') return send(res, 200, { ok: true, now: Math.floor(Date.now() / 1000), points: historySince(int(u.searchParams.get('seconds'), 10, HISTORY_SECONDS, 600)) });
+    if (p === '/api/viewers' && req.method === 'GET') {
+      const list = viewerList();
+      return send(res, 200, { ok: true, viewers: list, kbps: list.reduce((a, v) => a + v.kbps, 0) });
+    }
+    if ((m = /^\/api\/viewers\/([\w-]+)\/disconnect$/.exec(p)) && req.method === 'POST') {
+      const v = webrtcViewers.get(m[1]);
+      if (!v || !v.mtxId) return send(res, 404, { ok: false, error: 'That viewer is not connected' });
+      await mtx.kick({ sourceType: 'webRTCSession', sourceId: v.mtxId });
+      webrtcViewers.delete(m[1]);
+      return send(res, 200, { ok: true });
+    }
     if (p === '/api/ndi/sources' && req.method === 'GET') {
       const r = DEMO ? { ok: true, sources: [{ name: 'FOH-MAC (OBS Program)', url: '192.168.10.21:5961' }, { name: 'PTZ-1 (Channel 1)', url: '192.168.20.31:5961' }] } : await ndi.list(int(u.searchParams.get('seconds'), 1, 15, 4));
       return send(res, 200, r);
@@ -984,8 +1090,9 @@ async function controlHandler(req, res) {
     }
     if (p === '/api/log' && req.method === 'GET') {
       const procs = [['MediaMTX', mtx.proc], ['Meters', meter.proc], ['Web player', webProc]]
-        .concat(ndi.ingest.procs.map((x) => [x.o.name, x]), ndi.output.procs.map((x) => [x.o.name, x]))
+        .concat(ndi.ingest.procs.map((x) => [x.o.name, x]))
         .concat(cfg.destinations.map((d) => [d.name, run(d.id).proc]));
+      // an NDI destination is two processes; list both
       return send(res, 200, { ok: true, mediamtx: mtx.log(), procs: procs.map(([n, x]) => ({ name: n, state: x.state, error: x.error, tail: x.tail.slice(-15) })) });
     }
     // the input preview on the control page (WebRTC from the live path)
@@ -1025,11 +1132,19 @@ if (require.main === module) {
   meter.proc.on('state', pushStatusSoon);
   if (!DEMO) ndi.list(1).then(() => pushState());
   applyInputSource();
+  if (DEMO) {
+    // pretend viewers so the viewer list has something to show
+    const now = Date.now();
+    webrtcViewers.set('d1', { id: 'd1', ip: '192.168.30.41', ua: 'Mozilla/5.0 (Linux; Tizen 6.0) SMART-TV Chrome/85', since: now - 1260e3, mtxId: 'x1', kbps: 4180, bytes: 655e6 });
+    webrtcViewers.set('d2', { id: 'd2', ip: '192.168.30.57', ua: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) Safari/605.1', since: now - 300e3, mtxId: 'x2', kbps: 4210, bytes: 158e6 });
+    const fake = [['73.92.14.201', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) Version/18.1 Mobile Safari/604.1'], ['24.120.8.66', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0 Safari/537.36']];
+    setInterval(() => { for (const [ip, ua] of fake) noteHls({ headers: { 'user-agent': ua, 'x-forwarded-for': ip }, socket: {} }, 2700000); }, 6000).unref();
+  }
   setInterval(() => { tick().catch((e) => console.error('status: ' + e.message)); }, 1000);
   listen(http.createServer(controlHandler), PORT, 'BroadcastRelay ' + pkg.version + (DEMO ? ' (demo)' : '') + ' control page');
   if (PUBLIC_PORT !== PORT) listen(http.createServer(publicHandler), PUBLIC_PORT, 'Web player');
   const bye = () => {
-    for (const p of [mtx.proc, meter.proc, webProc].concat(ndi.ingest.procs, ndi.output.procs, [...runs.values()].map((r) => r.proc))) p.stop();
+    for (const p of [mtx.proc, meter.proc, webProc].concat(ndi.ingest.procs, [...runs.values()].map((r) => r.proc))) p.stop();
     try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch (e) { /* fine */ }
     setTimeout(() => process.exit(0), 300);
   };
