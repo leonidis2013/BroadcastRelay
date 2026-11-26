@@ -35,6 +35,7 @@ const Sys = require('./lib/sys.js');
 const Demo = require('./lib/demo.js');
 const Net = require('./lib/netinfo.js');
 const Est = require('./lib/estimate.js');
+const Predict = require('./lib/predict.js');
 const pkg = require('./package.json');
 
 const args = process.argv.slice(2);
@@ -63,7 +64,7 @@ const DEFAULTS = {
   // your internet upload speed in Mb/s (0 = not set), to compare the estimated upload with
   resources: { uploadMbps: 0 },
   // what the stream is called, shared by every destination (one can use its own instead)
-  stream: { title: '{weekday} Service - {date}', sermon: '', speaker: '', speakers: [], series: '', seriesList: [], part: 0, autoPart: true, description: '', privacy: 'public', category: '', presets: [], presetId: '' },
+  stream: { title: '{weekday} Service - {date}', sermon: '', speaker: '', speakers: [], series: '', seriesList: [], part: 0, autoPart: true, description: '', privacy: 'public', category: '', presets: [], presetId: '', profiles: [], history: [] },
   destinations: [],
   web: { enabled: true, mode: 'encode', height: 720, fps: 0, bitrate: 0, preset: 'veryfast', audioBitrate: 160, title: 'Live', offlineText: 'The stream will start soon.' },
   ndi: { discoveryServer: '', extraIps: '', groups: '' },
@@ -109,12 +110,32 @@ let cfg = clone(DEFAULTS);
   if (!Array.isArray(cfg.stream.presets)) cfg.stream.presets = [];
   if (!Array.isArray(cfg.stream.speakers)) cfg.stream.speakers = [];
   if (!Array.isArray(cfg.stream.seriesList)) cfg.stream.seriesList = [];
+  if (!Array.isArray(cfg.stream.profiles)) cfg.stream.profiles = [];
+  if (!Array.isArray(cfg.stream.history)) cfg.stream.history = [];
   // 0.5.0: presets became title formats, and one is always selected
   if (!cfg.stream.presets.length) cfg.stream.presets.push({ id: crypto.randomBytes(4).toString('hex'), name: 'Service', title: cfg.stream.title, description: cfg.stream.description, privacy: cfg.stream.privacy, category: cfg.stream.category });
   if (!cfg.stream.presets.some((p) => p.id === cfg.stream.presetId)) {
     const same = cfg.stream.presets.find((p) => p.title === cfg.stream.title);
     cfg.stream.presetId = (same || cfg.stream.presets[0]).id;
     if (!same) cfg.stream.title = cfg.stream.presets[0].title;
+  }
+  // npm run demo: eight weeks of Sunday morning and Wednesday evening streams, so suggestions can be tried
+  if (DEMO && args.includes('--demo-history') && !cfg.stream.history.length) {
+    const sun = cfg.stream.presets[0];
+    let wed = cfg.stream.presets.find((p) => p.name === 'Wednesday Night');
+    if (!wed) { wed = { id: crypto.randomBytes(4).toString('hex'), name: 'Wednesday Night', title: 'Wednesday Night - {series}, {part}', description: '', privacy: 'public', category: '' }; cfg.stream.presets.push(wed); }
+    const sermons = ['Called to Be Saints', 'Not Ashamed', 'All Have Sinned', 'Justified by Faith', 'Peace with God', 'Dead to Sin', 'The Law and Grace', 'No Condemnation'];
+    const psalms = ['The Blessed Man', 'Why Do the Nations Rage', 'A Shield About Me', 'In Peace I Lie Down', 'Lead Me, Lord', 'Lord, Heal Me', 'My Refuge', 'How Majestic'];
+    const at = (weeksAgo, day, h, m) => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() - day + 7) % 7 || 7) - 7 * weeksAgo); d.setHours(h, m, 0, 0); return d; };
+    const add = (d, f, series, part, sermon, speaker) => cfg.stream.history.push({ id: crypto.randomBytes(4).toString('hex'), t: d.getTime(), day: d.getDay(), hour: d.getHours() + d.getMinutes() / 60, presetId: f.id, format: f.name,
+      title: f.name, series, part, sermon, speaker, autoPart: true, minutes: 75 });
+    for (let w = 7; w >= 0; w--) {
+      add(at(w, 0, 10, 30), sun, 'Romans', 8 - w, sermons[7 - w], w === 3 ? 'Pastor Dave Miller' : 'Pastor John Smith');
+      add(at(w, 3, 19, 0), wed, 'Psalms', 8 - w, psalms[7 - w], 'Pastor Mike Lee');
+    }
+    cfg.stream.history.sort((a, b) => a.t - b.t);
+    cfg.stream.profiles = [{ id: crypto.randomBytes(4).toString('hex'), name: 'Sunday Morning', presetId: sun.id, series: 'Romans', speaker: 'Pastor John Smith', description: '', autoPart: true },
+      { id: crypto.randomBytes(4).toString('hex'), name: 'Wednesday Night', presetId: wed.id, series: 'Psalms', speaker: 'Pastor Mike Lee', description: '', autoPart: true }];
   }
   // 0.3.0: the fixed NDI output became a destination type
   if (saved.ndiOut && (saved.ndiOut.enabled || (saved.ndiOut.name && saved.ndiOut.name !== 'Program')) && !cfg.destinations.some((d) => d.type === 'ndi')) {
@@ -169,14 +190,15 @@ function partText() { const n = Number(cfg.stream && cfg.stream.part) || 0; retu
 /** "Series, Part 3" for the web player. */
 function seriesLine() { return [cfg.stream.series, partText()].filter(Boolean).join(', '); }
 
-function formatTitle(t) {
+function formatTitle(t, vals) {
+  const v = vals || cfg.stream || {};
   const now = new Date();
   const date = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   return String(t || '').replace(/\{date\}/g, date).replace(/\{time\}/g, time).replace(/\{weekday\}/g, weekday)
-    .replace(/\{sermon\}/g, (cfg.stream && cfg.stream.sermon) || '').replace(/\{speaker\}/g, (cfg.stream && cfg.stream.speaker) || '')
-    .replace(/\{series\}/g, (cfg.stream && cfg.stream.series) || '').replace(/\{part\}/g, partText())
+    .replace(/\{sermon\}/g, v.sermon || '').replace(/\{speaker\}/g, v.speaker || '')
+    .replace(/\{series\}/g, v.series || '').replace(/\{part\}/g, Number(v.part) > 0 ? 'Part ' + Number(v.part) : '')
     // tidy what an empty {sermon} or {speaker} leaves behind: "A -  - B", "A -", "- B", "A with"
     .replace(/\s+(with|by|featuring|feat\.)\s*$/i, ' ')
     .replace(/(\s*[-–—|·:]\s*)(?:[-–—|·:]\s*)+/g, '$1')
@@ -654,13 +676,37 @@ function addBitrate() {
 const session = { since: null };
 // how long a stream must run before the part counts up (BR_MIN_SESSION_MS is for the tests)
 const MIN_SESSION_MS = Number(process.env.BR_MIN_SESSION_MS) || 10 * 60e3;
+/** What is being streamed now, as a history entry. */
+function historyEntry(t) {
+  const d = new Date(t), st = cfg.stream, f = st.presets.find((p) => p.id === st.presetId);
+  return { t, day: d.getDay(), hour: Math.round((d.getHours() + d.getMinutes() / 60) * 100) / 100, presetId: st.presetId, format: f ? f.name : '', title: formatTitle(st.title),
+    series: st.series || '', part: Number(st.part) || 0, sermon: st.sermon || '', speaker: st.speaker || '', autoPart: st.autoPart !== false };
+}
+/** Keep the history entry of the stream in progress up to date when the info changes during it. */
+function touchHistory() {
+  if (!session.hid) return;
+  const h = cfg.stream.history.find((x) => x.id === session.hid);
+  if (h) Object.assign(h, historyEntry(h.t), { id: h.id });
+}
 function checkSession() {
   const anyLive = [...runs.values()].some((r) => r.want && r.proc.state === 'live');
-  if (anyLive && !session.since) session.since = Date.now();
+  if (anyLive && !session.since) {
+    session.since = Date.now();
+    // remember what is streamed, for suggestions and the Past streams list
+    session.hid = crypto.randomBytes(4).toString('hex');
+    cfg.stream.history.push(Object.assign({ id: session.hid, minutes: 0 }, historyEntry(session.since)));
+    cfg.stream.history = cfg.stream.history.slice(-150);
+    saveCfg();
+  }
   const anyWanted = [...runs.values()].some((r) => r.want || r.phase);
   if (!anyWanted && session.since) {
     const long = Date.now() - session.since > MIN_SESSION_MS; // a real service, not a quick test
-    session.since = null;
+    const h = cfg.stream.history.find((x) => x.id === session.hid);
+    // quick tests don't teach the suggestions
+    if (h && long) h.minutes = Math.round((Date.now() - session.since) / 60000);
+    else if (h) cfg.stream.history = cfg.stream.history.filter((x) => x !== h);
+    session.since = null; session.hid = null;
+    saveCfg();
     if (long && cfg.stream.autoPart !== false && cfg.stream.series && Number(cfg.stream.part) > 0) {
       cfg.stream.part = Number(cfg.stream.part) + 1;
       saveCfg(); pushState();
@@ -721,6 +767,37 @@ function publicCfg() {
   c.facebook = { appId: cfg.facebook.appId, hasClientToken: !!cfg.facebook.clientToken, hasAppSecret: !!cfg.facebook.appSecret, graphVersion: cfg.facebook.graphVersion, pageId: cfg.facebook.pageId };
   return c;
 }
+/** The guess for a stream now, and per-series memory, for the Stream info card. */
+function suggestion(now = Date.now()) {
+  const g = Predict.predict(cfg.stream.history, now, cfg.stream.presets.map((p) => p.id));
+  if (g) {
+    const f = cfg.stream.presets.find((p) => p.id === g.presetId) || cfg.stream.presets.find((p) => p.id === cfg.stream.presetId);
+    g.presetId = f ? f.id : cfg.stream.presetId;
+    g.title = f ? formatTitle(f.title, g) : '';
+  }
+  return g;
+}
+function streamMemory() {
+  const info = Predict.seriesInfo(cfg.stream.history);
+  const now = Date.now();
+  for (const e of Object.values(info)) e.next = Predict.nextPart(e, now);
+  const sermons = [];
+  for (const h of cfg.stream.history.slice().reverse()) if (h.sermon && !sermons.some((x) => x.toLowerCase() === h.sermon.toLowerCase())) sermons.push(h.sermon);
+  return { suggest: suggestion(now), series: info, sermons: sermons.slice(0, 25) };
+}
+/** Fill in a profile: its format, series (with the next part), speaker and description. */
+function applyProfile(pr) {
+  const v = { series: pr.series || '', speaker: pr.speaker || '', autoPart: pr.autoPart !== false };
+  if (pr.series) v.part = Predict.nextPart(Predict.seriesInfo(cfg.stream.history)[pr.series.toLowerCase()], Date.now()) || Number(cfg.stream.part) || 0;
+  if (pr.sermon !== undefined) v.sermon = pr.sermon;
+  if (pr.description) v.description = pr.description;
+  return setStreamInfo(v, cfg.stream.presets.some((p) => p.id === pr.presetId) ? pr.presetId : undefined);
+}
+function findProfile(key) {
+  const list = cfg.stream.profiles, k = String(key).toLowerCase();
+  return list.find((p) => p.id === key) || list.find((p) => p.name.toLowerCase() === k) || (/^\d+$/.test(k) ? list[Number(k) - 1] : null);
+}
+
 function appState() {
   return {
     version: pkg.version, demo: DEMO,
@@ -733,6 +810,7 @@ function appState() {
     cpuModel: sys.cpuModel(),
     categories: YouTube.CATEGORIES,
     status: status(),
+    memory: streamMemory(),
     events: events.slice(-100)
   };
 }
@@ -900,6 +978,7 @@ async function setStreamInfo(v, presetId) {
   const changed = ['title', 'description', 'privacy', 'category'].some((k) => next[k] !== cfg.stream[k]);
   Object.assign(cfg.stream, next, { sermon, speaker, series, part, autoPart });
   if (fmt) cfg.stream.presetId = fmt.id;
+  touchHistory();
   saveCfg(); pushState();
   // a new sermon or speaker only matters to YouTube/Facebook when the title or description uses it
   const usesSermon = /\{(sermon|speaker|series|part)\}/.test(cfg.stream.title + cfg.stream.description);
@@ -980,6 +1059,18 @@ async function action(parts, method, body) {
     // {"format": "<name, id or number>"} switches format too
     if (body.format !== undefined) { const f = findPreset(String(body.format)); if (!f) return { status: 404, ok: false, error: 'No format "' + body.format + '"' }; return setStreamInfo(body, f.id); }
     return setStreamInfo(body);
+  }
+  // POST /stream/suggest: fill in the guess for now (format, series and next part, speaker)
+  if (a === 'stream' && b === 'suggest') {
+    const g = suggestion();
+    if (!g) return { status: 404, ok: false, error: 'Nothing streamed yet to suggest from' };
+    return setStreamInfo({ series: g.series, part: g.part, speaker: g.speaker, sermon: g.sermon || undefined, autoPart: g.autoPart }, g.presetId);
+  }
+  // POST /stream/profile/<name, id or number>: fill in a profile
+  if (a === 'stream' && b === 'profile' && c) {
+    const pr = findProfile(c);
+    if (!pr) return { status: 404, ok: false, error: 'No profile "' + c + '"' };
+    return applyProfile(pr);
   }
   // POST /stream/preset/<name, id or number>: load a preset
   if (a === 'stream' && b === 'preset' && c) {
@@ -1300,6 +1391,37 @@ async function controlHandler(req, res) {
       return send(res, 200, { ok: true });
     }
     if ((m = /^\/api\/stream\/presets\/([\w-]+)\/move$/.exec(p)) && req.method === 'POST') { const b = await readBody(req); return send(res, 200, movePreset(m[1], Number(b.dir))); }
+    if (p === '/api/stream/memory' && req.method === 'GET') return send(res, 200, Object.assign({ ok: true }, streamMemory()));
+    if (p === '/api/stream/profiles' && req.method === 'POST') {
+      const b = await readBody(req), name = str(b.name, 40);
+      if (!name) return send(res, 400, { ok: false, error: 'Give the profile a name' });
+      const v = b.values || {};
+      const prof = { id: b.id && cfg.stream.profiles.some((x) => x.id === b.id) ? b.id : crypto.randomBytes(4).toString('hex'), name,
+        presetId: cfg.stream.presets.some((x) => x.id === v.presetId) ? v.presetId : cfg.stream.presetId,
+        series: str(v.series || '', 80), speaker: str(v.speaker || '', 80), description: str(v.description || '', 5000), autoPart: v.autoPart !== false };
+      if (cfg.stream.profiles.some((x) => x.id !== prof.id && x.name.toLowerCase() === name.toLowerCase())) return send(res, 400, { ok: false, error: 'There is already a profile called ' + name });
+      const i = cfg.stream.profiles.findIndex((x) => x.id === prof.id);
+      if (i >= 0) cfg.stream.profiles[i] = prof; else cfg.stream.profiles.push(prof);
+      saveCfg(); pushState();
+      return send(res, 200, { ok: true, id: prof.id });
+    }
+    m = /^\/api\/stream\/profiles\/([\w-]+)$/.exec(p);
+    if (m && req.method === 'DELETE') {
+      cfg.stream.profiles = cfg.stream.profiles.filter((x) => x.id !== m[1]);
+      saveCfg(); pushState();
+      return send(res, 200, { ok: true });
+    }
+    if (m && req.method === 'POST') {
+      const pr = findProfile(m[1]);
+      if (!pr) return send(res, 404, { ok: false, error: 'No such profile' });
+      return send(res, 200, await applyProfile(pr));
+    }
+    m = /^\/api\/stream\/history\/([\w-]+)$/.exec(p);
+    if (m && req.method === 'DELETE') {
+      cfg.stream.history = cfg.stream.history.filter((x) => x.id !== m[1]);
+      saveCfg(); pushState();
+      return send(res, 200, { ok: true });
+    }
     if (p === '/api/stream/series/forget' && req.method === 'POST') {
       const b = await readBody(req), n = String(b.name || '').toLowerCase();
       cfg.stream.seriesList = (cfg.stream.seriesList || []).filter((x) => x.toLowerCase() !== n);

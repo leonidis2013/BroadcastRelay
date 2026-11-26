@@ -282,6 +282,23 @@
   @media (max-width:900px) { #infoCard .sigrid { grid-template-columns:1fr 1fr; } }
   @media (max-width:560px) { #infoCard .sigrid { grid-template-columns:1fr; } }
 
+  /* stream info memory */
+  .sisug { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:12px; padding:10px 12px; border-radius:10px;
+    background:color-mix(in srgb, var(--acc) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--acc) 35%, transparent); font-size:13.5px; }
+  .sisug .st1 { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--acc); font-weight:700; }
+  .sisug .sv { flex:1; min-width:220px; }
+  .sisug .sv b { font-weight:700; } .sisug .sv small { color:var(--dim); display:block; }
+  .sisug .x { background:transparent; border:0; color:var(--dim); font-size:18px; padding:0 4px; min-height:0; box-shadow:none; }
+  .siprof { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:10px; font-size:12.5px; }
+  .siprof .pl { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); font-weight:700; margin-right:2px; }
+  .pchip { padding:5px 11px; border-radius:999px; font-size:13px; font-weight:600; background:var(--card2); border:1px solid var(--line); color:var(--fg); min-height:0; }
+  .pchip:hover { border-color:var(--acc); color:var(--acc); }
+  .pchip.on { background:color-mix(in srgb, var(--acc) 15%, var(--card)); color:var(--acc); border-color:color-mix(in srgb, var(--acc) 40%, transparent); }
+  .pastl { width:100%; border-collapse:collapse; font-size:13px; }
+  .pastl td { padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .pastl td small { display:block; color:var(--dim); font-size:11.5px; }
+  .pastl td:last-child { white-space:nowrap; text-align:right; }
+
   /* title builder */
   .pal { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
   .pal .pl { font-size:11px; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; align-self:center; margin-right:4px; }
@@ -680,7 +697,123 @@
       .replace(/\{part\}/g, Number(v.part) > 0 ? 'Part ' + Number(v.part) : ''));
   }
 
-  var siDirty = false, siDescFromFmt = true, siBuiltFor = null;
+  var siDirty = false, siDescFromFmt = true, siBuiltFor = null, siPartTouched = false, siSugHidden = '';
+  // typed details survive leaving the page or reloading, until saved or undone
+  var DRAFT_KEY = 'br-si-draft';
+  function siBase() { var st = S.settings.stream; return JSON.stringify([st.presetId, st.series, st.part, st.sermon, st.speaker, st.description, st.autoPart]); }
+  function draftSave() { try { if (siDirty) localStorage.setItem(DRAFT_KEY, JSON.stringify({ base: siBase(), v: siVals(), descFmt: siDescFromFmt })); else localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+  function draftLoad() { try { var d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d && d.base === siBase() ? d : null; } catch (e) { return null; } }
+  function MEM() { return S.memory || { series: {}, sermons: [] }; }
+  function lowc(x) { return String(x || '').trim().toLowerCase(); }
+  /** Put values in the form (from a profile, the suggestion or a past stream); nothing is saved until Save. */
+  function siSet(v) {
+    if (v.presetId && siFmt(v.presetId)) {
+      $('#siFmt').value = v.presetId;
+      if (v.description === undefined && siDescFromFmt) $('#siDesc').value = (siFmt(v.presetId).description || '');
+    }
+    if (v.series !== undefined) $('#siSeries').value = v.series;
+    if (v.part !== undefined) $('#siPart').value = v.part;
+    if (v.sermon !== undefined) $('#siSermon').value = v.sermon;
+    if (v.speaker !== undefined) $('#siSpeaker').value = v.speaker;
+    if (v.autoPart !== undefined) $('#siAuto').checked = v.autoPart !== false;
+    if (v.description) { $('#siDesc').value = v.description; siDescFromFmt = false; }
+    siDirty = true; siPartTouched = v.part !== undefined; siPaint(); draftSave();
+  }
+  function dayPart(d) { var h = d.getHours(); return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'; }
+  function sugKey(g) { return [g.presetId, g.series, g.part, g.speaker, g.sermon].join('|'); }
+  function siSuggestion() {
+    var g = MEM().suggest, v = siVals(), live = ST.destinations.some(function (d) { return d.state === 'live'; });
+    if (!g || live || siSugHidden === sugKey(g)) return null;
+    var same = g.presetId === v.presetId && lowc(g.series) === lowc(v.series) && (g.part || 0) === v.part && lowc(g.speaker) === lowc(v.speaker) && (!g.sermon || lowc(g.sermon) === lowc(v.sermon));
+    return same ? null : g;
+  }
+  function paintSuggestion() {
+    var g = siSuggestion(), el = $('#siSug');
+    if (!g) { el.classList.add('hide'); el.innerHTML = ''; return; }
+    var now = new Date(), day = now.toLocaleDateString('en-US', { weekday: 'long' }), dp = dayPart(now), f = siFmt(g.presetId);
+    var bits = [f ? f.name : '', g.series ? g.series + (g.part ? ', Part ' + g.part : '') : '', g.sermon, g.speaker].filter(Boolean);
+    var why = g.basis === 'time' ? (g.count > 1 ? 'Like the last ' + g.count + ' ' + day + ' ' + dp + 's' : 'Like last ' + day + ' ' + dp)
+      : g.basis === 'day' ? 'Like earlier ' + day + 's' : 'From the last stream';
+    if (g.sermon) why += ' · second stream today, same sermon';
+    else if (g.series && g.part) why += ' · next part of the series';
+    var html = '<span class="st1">Suggested for ' + day + ' ' + dp + '</span><div class="sv"><b>' + esc(bits.join(' · ')) + '</b><small>' + esc(why) + (g.title ? ' · ' + esc(g.title) : '') + '</small></div>' +
+      '<button class="on" id="siSugUse">Fill in</button><button class="x" id="siSugNo" title="Not this time">×</button>';
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+      $('#siSugUse').onclick = function () { siSet({ presetId: g.presetId, series: g.series, part: g.part, speaker: g.speaker, sermon: g.sermon || $('#siSermon').value, autoPart: g.autoPart }); };
+      $('#siSugNo').onclick = function () { siSugHidden = sugKey(g); paintSuggestion(); };
+    }
+    el.classList.remove('hide');
+  }
+  function paintProfiles() {
+    var list = S.settings.stream.profiles || [], v = siVals();
+    var html = '<span class="pl">Profiles</span>' + list.map(function (p) {
+      var on = p.presetId === v.presetId && lowc(p.series) === lowc(v.series) && lowc(p.speaker) === lowc(v.speaker);
+      return '<button class="pchip' + (on ? ' on' : '') + '" data-prof="' + p.id + '" title="' + esc([siFmt(p.presetId) ? siFmt(p.presetId).name : '', p.series, p.speaker].filter(Boolean).join(' · ')) + '">' + esc(p.name) + '</button>';
+    }).join('') + '<button class="link" id="siProfSave">' + (list.length ? '+ Save as profile' : 'Save these details as a profile') + '</button>' +
+      (list.length ? '<button class="link" id="siProfEdit">Edit</button>' : '') + '<button class="link" id="siPast" style="margin-left:auto">Past streams (' + (S.settings.stream.history || []).length + ')</button>';
+    var el = $('#siProf');
+    if (el.innerHTML === html) return;
+    el.innerHTML = html;
+    $$('[data-prof]', el).forEach(function (b) { b.onclick = function () {
+      var p = list.find(function (x) { return x.id === b.dataset.prof; }); if (!p) return;
+      var si = p.series ? MEM().series[lowc(p.series)] : null;
+      var v2 = { presetId: p.presetId, series: p.series, speaker: p.speaker, autoPart: p.autoPart };
+      if (p.series) v2.part = si && si.next ? si.next : (lowc(p.series) === lowc(S.settings.stream.series) ? S.settings.stream.part : 0);
+      if (p.description) v2.description = p.description;
+      siSet(v2);
+    }; });
+    $('#siProfSave').onclick = saveProfile;
+    if ($('#siProfEdit')) $('#siProfEdit').onclick = editProfiles;
+    $('#siPast').onclick = showPast;
+  }
+  function saveProfile() {
+    var v = siVals(), f = siFmt(v.presetId), list = S.settings.stream.profiles || [];
+    var guess = [f ? f.name : '', v.series].filter(Boolean).join(' · ');
+    modal('<div class="mh">Save as profile</div><div class="mb"><div class="note">A profile fills in the format, series, speaker' + (siDescFromFmt ? '' : ', description') + ' and the count-up setting with one tap. The part is worked out from the series each time; the sermon is left for you to type.</div>' +
+      '<div class="fgrid"><label class="fld wide"><span>Name</span><input id="pfName" maxlength="40" value="' + esc(guess) + '" list="pfList" autocomplete="off"><datalist id="pfList">' + list.map(function (p) { return '<option value="' + esc(p.name) + '">'; }).join('') + '</datalist></label></div>' +
+      '<div class="prev">' + esc([f ? 'Format: ' + f.name : '', v.series ? 'Series: ' + v.series : '', v.speaker ? 'Speaker: ' + v.speaker : ''].filter(Boolean).join(' · ') || 'Only the format') + '</div>' +
+      '<div class="formerr hide" id="pfErr"></div></div><div class="mf"><button id="mNo">Cancel</button><button class="on" id="pfOk">Save profile</button></div>');
+    $('#mNo').onclick = closeModal; $('#pfName').focus(); $('#pfName').select();
+    $('#pfOk').onclick = function () {
+      var name = $('#pfName').value.trim(), same = list.find(function (p) { return lowc(p.name) === lowc(name); });
+      call('POST', 'api/stream/profiles', { id: same ? same.id : undefined, name: name, values: { presetId: v.presetId, series: v.series, speaker: v.speaker, description: siDescFromFmt ? '' : v.description, autoPart: v.autoPart } }).then(function (r) {
+        if (!r.ok) { $('#pfErr').textContent = r.error; $('#pfErr').classList.remove('hide'); return; }
+        closeModal(); toast(same ? 'Profile updated' : 'Profile saved', true);
+      });
+    };
+  }
+  function editProfiles() {
+    var draw = function () {
+      var list = S.settings.stream.profiles || [];
+      $('#pfRows').innerHTML = list.length ? '<table class="pastl">' + list.map(function (p) {
+        return '<tr><td><b>' + esc(p.name) + '</b><small>' + esc([siFmt(p.presetId) ? siFmt(p.presetId).name : '', p.series, p.speaker].filter(Boolean).join(' · ')) + '</small></td><td><button class="danger" data-pdel="' + p.id + '">Delete</button></td></tr>';
+      }).join('') + '</table>' : '<div class="note">No profiles left.</div>';
+      $$('[data-pdel]').forEach(function (b) { b.onclick = function () { call('DELETE', 'api/stream/profiles/' + b.dataset.pdel).then(function () { setTimeout(draw, 300); }); }; });
+    };
+    modal('<div class="mh">Profiles</div><div class="mb"><div class="note">To change a profile, fill in the card the way you want it and save it again under the same name.</div><div id="pfRows"></div></div><div class="mf"><button id="mNo">Close</button></div>');
+    $('#mNo').onclick = closeModal; draw();
+  }
+  function showPast() {
+    var draw = function () {
+      var list = (S.settings.stream.history || []).slice().reverse();
+      $('#psRows').innerHTML = list.length ? '<table class="pastl">' + list.map(function (h) {
+        var d = new Date(h.t);
+        return '<tr><td><b>' + esc(d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) + '</b><small>' + esc(d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })) + (h.minutes ? ' · ' + h.minutes + ' min' : ' · live now') + '</small></td>' +
+          '<td><b>' + esc(h.title || '') + '</b><small>' + esc([h.format, h.series ? h.series + (h.part ? ', Part ' + h.part : '') : '', h.sermon, h.speaker].filter(Boolean).join(' · ')) + '</small></td>' +
+          '<td><button data-puse="' + h.id + '">Use again</button> <button class="danger" data-prm="' + h.id + '" title="Forget this one, so it isn\'t used for suggestions">Forget</button></td></tr>';
+      }).join('') + '</table>' : '<div class="note">Streams longer than 10 minutes show up here, with what they were called. Suggestions are made from them.</div>';
+      $$('[data-puse]').forEach(function (b) { b.onclick = function () {
+        var h = list.find(function (x) { return x.id === b.dataset.puse; }); closeModal();
+        siSet({ presetId: siFmt(h.presetId) ? h.presetId : undefined, series: h.series, part: h.part, sermon: h.sermon, speaker: h.speaker, autoPart: h.autoPart });
+      }; });
+      $$('[data-prm]').forEach(function (b) { b.onclick = function () { call('DELETE', 'api/stream/history/' + b.dataset.prm).then(function () { setTimeout(draw, 300); }); }; });
+    };
+    modal('<div class="mh">Past streams</div><div class="mb" style="max-height:65vh;overflow:auto"><div id="psRows"></div></div><div class="mf"><span class="note" style="margin-right:auto">Use again fills the card; nothing changes until you save.</span><button id="mNo">Close</button></div>', true);
+    $('#mNo').onclick = closeModal; draw();
+  }
+  // the suggestion depends on the time of day: refresh it now and then
+  setInterval(function () { if (S && $('#siSug')) call('GET', 'api/stream/memory').then(function (r) { if (r.ok) { S.memory = { suggest: r.suggest, series: r.series, sermons: r.sermons }; paintSuggestion(); } }); }, 5 * 60e3);
   function siFmt(id) { return S.settings.stream.presets.find(function (p) { return p.id === id; }); }
   function siVals() {
     return { presetId: $('#siFmt').value, series: $('#siSeries').value.trim(), part: Number($('#siPart').value) || 0, autoPart: $('#siAuto').checked,
@@ -693,10 +826,20 @@
     $('#siSeries').value = st.series || ''; $('#siPart').value = st.part || 0; $('#siAuto').checked = st.autoPart !== false;
     $('#siSermon').value = st.sermon || ''; $('#siSpeaker').value = st.speaker || ''; $('#siDesc').value = st.description || '';
     $('#siSpkList').innerHTML = (st.speakers || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+    $('#siSermonList').innerHTML = (MEM().sermons || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
     $('#siSeriesList').innerHTML = (st.seriesList || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
     var f = siFmt(st.presetId);
     siDescFromFmt = !f || (st.description || '') === (f.description || '');
-    siDirty = false;
+    siDirty = false; siPartTouched = false;
+    // bring back what was typed but not saved
+    var d = draftLoad();
+    if (d) {
+      var v = d.v;
+      if (siFmt(v.presetId)) $('#siFmt').value = v.presetId;
+      $('#siSeries').value = v.series || ''; $('#siPart').value = v.part || 0; $('#siAuto').checked = v.autoPart !== false;
+      $('#siSermon').value = v.sermon || ''; $('#siSpeaker').value = v.speaker || ''; $('#siDesc').value = v.description || '';
+      siDescFromFmt = d.descFmt; siDirty = true;
+    } else { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
   }
   function siPaint() {
     var st = S.settings.stream, v = siVals(), f = siFmt(v.presetId) || {};
@@ -717,6 +860,7 @@
     $('#siRevert').classList.toggle('hide', !siDirty);
     $('#siHint').textContent = siDirty ? 'Not saved yet' : '';
     $('#siDescReset').classList.toggle('hide', siDescFromFmt || !f.description);
+    paintSuggestion(); paintProfiles();
   }
   function renderInfo() {
     var el = $('#infoCard');
@@ -724,18 +868,29 @@
       siBuiltFor = el;
       el.innerHTML = '<div class="dh"><span class="dot acc"></span><div class="dn">Stream info</div><div class="chips" id="siChips"></div></div>' +
         '<div class="sititle" id="siTitle"></div><div class="prev" id="siSub"></div>' +
+        '<div class="sisug hide" id="siSug"></div><div class="siprof" id="siProf"></div>' +
         '<div class="sigrid">' +
         '<label class="fld"><span>Format</span><select id="siFmt"></select></label>' +
         '<label class="fld"><span>Series</span><input id="siSeries" list="siSeriesList" maxlength="80" placeholder="e.g. Romans" autocomplete="off"><datalist id="siSeriesList"></datalist></label>' +
         '<div class="fld"><span>Part (0 = none)</span><div class="partbox"><button type="button" id="siPartDn" title="One less">−</button><input id="siPart" type="number" min="0" max="999"><button type="button" id="siPartUp" title="One more">+</button></div>' +
         '<label class="chk"><input type="checkbox" id="siAuto"> Count up after each stream</label></div>' +
-        '<label class="fld"><span>Sermon</span><input id="siSermon" maxlength="120" placeholder="e.g. Walking by Faith" autocomplete="off"></label>' +
+        '<label class="fld"><span>Sermon</span><input id="siSermon" list="siSermonList" maxlength="120" placeholder="e.g. Walking by Faith" autocomplete="off"><datalist id="siSermonList"></datalist></label>' +
         '<label class="fld"><span>Speaker</span><input id="siSpeaker" list="siSpkList" maxlength="80" placeholder="e.g. Pastor John Smith" autocomplete="off"><datalist id="siSpkList"></datalist></label>' +
         '<label class="fld"><span>Description <button type="button" class="link" id="siDescReset">Use the format\'s</button></span><textarea id="siDesc" rows="2" maxlength="5000"></textarea></label>' +
         '</div><div class="errbox hide" id="siErr"></div>' +
         '<div class="df"><span class="when" id="siHint"></span><button id="siRevert" class="hide">Undo</button><button class="on" id="siApply" disabled>Save</button></div>';
-      var dirty = function () { siDirty = true; siPaint(); };
+      var dirty = function () { siDirty = true; siPaint(); draftSave(); };
       ['#siSeries', '#siPart', '#siSermon', '#siSpeaker'].forEach(function (k) { $(k).addEventListener('input', dirty); });
+      $('#siPart').addEventListener('input', function () { siPartTouched = true; });
+      // picking a series you've streamed before fills in its next part and usual speaker
+      $('#siSeries').addEventListener('change', function () {
+        var si = MEM().series[lowc($('#siSeries').value)];
+        if (!si) return;
+        $('#siSeries').value = si.name;
+        if (!siPartTouched && si.next) $('#siPart').value = si.next;
+        if (!$('#siSpeaker').value.trim() && si.speaker) $('#siSpeaker').value = si.speaker;
+        dirty();
+      });
       $('#siAuto').addEventListener('change', dirty);
       $('#siDesc').addEventListener('input', function () { siDescFromFmt = false; dirty(); });
       $('#siFmt').addEventListener('change', function () {
@@ -744,16 +899,16 @@
         dirty();
       });
       $('#siDescReset').onclick = function () { var f = siFmt($('#siFmt').value); $('#siDesc').value = (f && f.description) || ''; siDescFromFmt = true; dirty(); };
-      var step = function (n) { $('#siPart').value = Math.max(0, Math.min(999, (Number($('#siPart').value) || 0) + n)); dirty(); };
+      var step = function (n) { $('#siPart').value = Math.max(0, Math.min(999, (Number($('#siPart').value) || 0) + n)); siPartTouched = true; dirty(); };
       $('#siPartDn').onclick = function () { step(-1); }; $('#siPartUp').onclick = function () { step(1); };
-      $('#siRevert').onclick = function () { siFill(); siPaint(); };
+      $('#siRevert').onclick = function () { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} siFill(); siPaint(); };
       $('#siApply').onclick = function () {
         var v = siVals(), live = ST.stream.broadcasts;
         var go = function () {
           $('#siApply').disabled = true;
           call('POST', 'api/stream', v).then(function (r) {
             if (!r.ok && !r.updated) { $('#siApply').disabled = false; return toast(r.error || 'Not saved'); }
-            siDirty = false; infoResult(r);
+            siDirty = false; try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} infoResult(r);
           });
         };
         if (live) confirmBox('Update the live broadcasts?', 'The title on YouTube and Facebook changes to:<br><b>' + esc($('#siTitle').textContent) + '</b>', 'Save and update', go);
@@ -1586,6 +1741,8 @@
         ex('POST', '/recording/on', 'Recording: <code>on</code>, <code>off</code>, <code>toggle</code>') +
         ex('POST', '/input/source/ndi', 'Switch the input: <code>stream</code> or <code>ndi</code>') +
         ex('POST', '/stream/preset/<name, id or number>', 'Switch to a title format (updates live broadcasts)') +
+        ex('POST', '/stream/profile/<name, id or number>', 'Fill in a profile: format, series with its next part, speaker') +
+        ex('POST', '/stream/suggest', 'Fill in the suggestion for now (from past streams at this day and time)') +
         ex('POST', '/stream', 'Set Stream info: JSON body, any of <code>{"series": "Romans", "part": 3, "sermon": "…", "speaker": "…", "description": "…"}</code>') +
       '</table></div>' +
       '<div class="card"><h2>Status for feedback (GET)</h2><table class="kv">' +

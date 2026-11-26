@@ -69,6 +69,10 @@ What the stream is called is split in two:
 
 The details are shared by the web player and every YouTube and Facebook destination connected by account. In the template they're `{weekday}`, `{date}`, `{time}`, `{series}`, `{part}` ("Part 3"), `{sermon}` and `{speaker}`. An empty piece takes its separator with it ("Sunday - {sermon} - {speaker}" with no sermon reads "Sunday - Pastor John"), and Part 0 means no part.
 
+- **It remembers**: every stream longer than 10 minutes is kept under **Past streams** with what it was called (format, series and part, sermon, speaker). *Use again* fills the card from one; *Forget* removes one (e.g. a test) so it isn't used for suggestions. Sermons, series and speakers you've used are offered as you type, and picking a series you've streamed before fills in its next part and usual speaker.
+- **Suggestion**: from past streams on the same weekday around the same time, the card offers a guess for now, e.g. *Suggested for Wednesday evening: Wednesday Night · Psalms, Part 9 · Pastor Mike Lee*, with *Fill in*. It picks the usual format and speaker for that slot and the next part of its series. If a series has had two services on one day before, a later service that day gets the same part and sermon again.
+- **Profiles**: save the card's format, series, speaker (and description, if you changed it) under a name like *Sunday Morning*; tap it to fill them in, with the series' next part. Saving under the same name updates it.
+- **Not lost**: what you type is kept until you Save or Undo, even if you leave the page or reload it.
 - **Part counts up**: with *Count up after each stream* ticked and a series set, the part goes up by one when a stream of more than 10 minutes ends (Part 3 today, Part 4 next week). Short tests don't count.
 - **Web player**: shows "Romans, Part 3 · Sermon · Speaker" under the title (leaving out whatever the title already says).
 - **While live**: saving, or switching format, updates the title and description of the running YouTube and Facebook broadcasts right away.
@@ -161,6 +165,8 @@ Use a **Generic HTTP** connection. Every request needs the token from **Settings
 | `POST /api/v1/recording/toggle` | also `on`, `off` |
 | `POST /api/v1/input/source/ndi` | or `stream` |
 | `POST /api/v1/stream/preset/<name, id or number>` | Switch title format (updates live broadcasts) |
+| `POST /api/v1/stream/profile/<name, id or number>` | Fill in a profile: format, series with its next part, speaker |
+| `POST /api/v1/stream/suggest` | Fill in the suggestion for now (from past streams at this day and time) |
 | `POST /api/v1/stream` | Set Stream info; JSON body with any of `{"format": "Sunday Service", "series": "Romans", "part": 3, "sermon": "…", "speaker": "…", "description": "…"}` |
 | `GET /api/v1/status` | `any_live`, `input_live`, `input_kbps`, `recording`, `web_viewers`, `stream_title`, `stream_preset` (format), `stream_series`, `stream_part`, `loudness_short`, `cpu`, `destinations.<id>.live`… |
 

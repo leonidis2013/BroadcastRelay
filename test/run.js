@@ -633,6 +633,83 @@ test('app: resource estimates in status, the editor and settings', async () => {
   } finally { p.kill(); }
 });
 
+test('predict: next stream from past ones at the same day and time', () => {
+  const P = R('lib/predict.js');
+  const H = [];
+  const at = (y, mo, d, h) => new Date(y, mo, d, h, 0).getTime();
+  const add = (t, presetId, series, part, sermon, speaker) => { const d = new Date(t); H.push({ id: String(H.length), t, day: d.getDay(), hour: d.getHours(), presetId, series, part, sermon, speaker, autoPart: true }); };
+  // Sundays 10:00 Romans with John (one guest), Wednesdays 19:00 Psalms with Mike
+  [1, 8, 15, 22].forEach((d, i) => add(at(2026, 10, d, 10), 'sun', 'Romans', i + 1, 'S' + i, i === 2 ? 'Guest' : 'John'));
+  [4, 11, 18].forEach((d, i) => add(at(2026, 10, d, 19), 'wed', 'Psalms', i + 1, 'P' + i, 'Mike'));
+  let g = P.predict(H, new Date(2026, 10, 25, 18, 30), ['sun', 'wed']);
+  assert.deepStrictEqual([g.presetId, g.series, g.part, g.speaker, g.sermon, g.basis], ['wed', 'Psalms', 4, 'Mike', '', 'time']);
+  g = P.predict(H, new Date(2026, 10, 29, 9, 45), ['sun', 'wed']);
+  assert.deepStrictEqual([g.presetId, g.series, g.part, g.speaker], ['sun', 'Romans', 5, 'John'], 'the usual speaker, not the one-off guest');
+  // later the same Sunday: the next part (one service a day so far)
+  g = P.predict(H, new Date(2026, 10, 22, 12, 0), ['sun', 'wed']);
+  assert.deepStrictEqual([g.part, g.sermon], [5, '']);
+  // with a history of two services a day, a second service repeats the part and sermon
+  add(at(2026, 10, 15, 11), 'sun', 'Romans', 3, 'S2', 'Guest');
+  H.sort((a, b) => a.t - b.t);
+  g = P.predict(H, new Date(2026, 10, 22, 11, 0), ['sun', 'wed']);
+  assert.deepStrictEqual([g.part, g.sermon], [4, 'S3']);
+  H.splice(H.findIndex((x) => x.part === 3 && x.speaker === 'Guest' && new Date(x.t).getHours() === 11), 1);
+  // a day never streamed: the last stream
+  g = P.predict(H, new Date(2026, 10, 27, 19, 0), ['sun', 'wed']);
+  assert.strictEqual(g.basis, 'last');
+  // a deleted format isn't suggested
+  assert.strictEqual(P.predict(H, new Date(2026, 10, 25, 19, 0), ['sun']).presetId, '');
+  assert.strictEqual(P.predict([], Date.now(), []), null);
+  const si = P.seriesInfo(H);
+  assert.deepStrictEqual([si.romans.lastPart, si.romans.speaker, si.psalms.count], [4, 'John', 3]);
+  assert.strictEqual(P.mode(['a', 'b', 'a', 'b']), 'b', 'ties go to the most recent');
+});
+test('app: past streams, profiles and the suggestion', async () => {
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'br-'));
+  const p = spawn(process.execPath, [path.join(root, 'server.js'), '--demo'], { env: Object.assign({}, process.env, { PORT: String(port), PUBLIC_PORT: String(port + 1), DATA_DIR: data, BR_MIN_SESSION_MS: '1500' }), stdio: 'ignore' });
+  try {
+    await new Promise((r) => setTimeout(r, 4000));
+    let r = await req(port, 'POST', '/api/v1/stream/suggest');
+    assert.strictEqual(r.status, 404, 'nothing to suggest from yet');
+    await req(port, 'POST', '/api/stream', { series: 'Romans', part: 3, sermon: 'Grace', speaker: 'John' });
+    await req(port, 'POST', '/api/destinations', { type: 'rtmp', url: 'rtmp://127.0.0.1/live', key: 'x' });
+    await req(port, 'POST', '/api/v1/golive');
+    await new Promise((res) => setTimeout(res, 2500));
+    await req(port, 'POST', '/api/stream', { sermon: 'Grace Abounds' }); // changed while live: the entry follows
+    await new Promise((res) => setTimeout(res, 1000));
+    await req(port, 'POST', '/api/v1/end');
+    await new Promise((res) => setTimeout(res, 2500));
+    r = await req(port, 'GET', '/api/state');
+    const h = r.j.settings.stream.history;
+    assert.strictEqual(h.length, 1);
+    assert.deepStrictEqual([h[0].series, h[0].part, h[0].sermon, h[0].speaker], ['Romans', 3, 'Grace Abounds', 'John']);
+    assert.ok(h[0].minutes >= 0 && r.j.memory.series.romans.lastPart === 3);
+    assert.ok(r.j.memory.sermons.includes('Grace Abounds'));
+    // a quick test is not kept
+    await req(port, 'POST', '/api/v1/golive'); await new Promise((res) => setTimeout(res, 800)); await req(port, 'POST', '/api/v1/end');
+    await new Promise((res) => setTimeout(res, 2000));
+    r = await req(port, 'GET', '/api/state');
+    assert.strictEqual(r.j.settings.stream.history.length, 1, 'short streams are forgotten');
+    // profiles
+    await req(port, 'POST', '/api/stream', { series: '', part: 0, speaker: '' });
+    r = await req(port, 'POST', '/api/stream/profiles', { name: 'Sunday', values: { series: 'Romans', speaker: 'John' } });
+    assert.ok(r.j.ok);
+    r = await req(port, 'POST', '/api/stream/profiles', { name: 'sunday', values: {} });
+    assert.strictEqual(r.status, 400, 'names are unique');
+    r = await req(port, 'POST', '/api/v1/stream/profile/Sunday');
+    r = await req(port, 'GET', '/api/v1/status');
+    assert.deepStrictEqual([r.j.stream_series, r.j.stream_part], ['Romans', 4], 'the profile picks the next part of the series');
+    r = await req(port, 'POST', '/api/v1/stream/suggest');
+    assert.ok(r.j.ok);
+    r = await req(port, 'GET', '/api/state');
+    await req(port, 'DELETE', '/api/stream/history/' + r.j.settings.stream.history[0].id);
+    await req(port, 'DELETE', '/api/stream/profiles/' + r.j.settings.stream.profiles[0].id);
+    r = await req(port, 'GET', '/api/state');
+    assert.deepStrictEqual([r.j.settings.stream.history.length, r.j.settings.stream.profiles.length, r.j.memory.suggest], [0, 0, null]);
+  } finally { p.kill(); }
+});
+
 // ---------- run ----------
 (async () => {
   let failed = 0;
