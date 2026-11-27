@@ -232,8 +232,8 @@ function estInput() {
 function estimateDest(d) {
   const info = feed.info || { width: 1920, height: 1080, fps: 30, videoCodec: 'H264', audioCodec: 'AAC' };
   const plan = d.type === 'ndi' ? F.plan({ mode: 'encode', height: d.video && d.video.height, fps: d.video && d.video.fps }, {}, info)
-    : F.plan(d.video, d.audio, info);
-  return est.forPlan(plan, estInput(), d.type);
+    : F.plan(d.video, d.audio, info, { type: d.type });
+  return Object.assign(est.forPlan(plan, estInput(), d.type), { bitrate: plan.copyVideo ? null : plan.bitrate, audioBitrate: plan.copyAudio ? null : plan.audioBitrate, height: plan.height, reasons: plan.reasons });
 }
 function estimateWeb() {
   if (!cfg.web.enabled) return null;
@@ -470,7 +470,7 @@ function destState(d) {
     const pl = p.plan || (feed.info ? F.plan({ mode: 'encode', height: d.video.height, fps: d.video.fps }, {}, feed.info) : null);
     desc = 'NDI · ' + os.hostname().toUpperCase() + ' (' + d.name + ')' + (pl ? ' · ' + pl.width + '×' + pl.height + ' ' + Math.round(pl.fps * 100) / 100 + 'fps' : '');
   } else {
-    try { plan = F.plan(d.video, d.audio, feed.info || {}); desc = F.describe(plan); } catch (e) { /* none */ }
+    try { plan = F.plan(d.video, d.audio, feed.info || {}, { type: d.type }); desc = F.describe(plan); } catch (e) { /* none */ }
   }
   const pids = p.pids || (p.pid ? [p.pid] : []);
   return {

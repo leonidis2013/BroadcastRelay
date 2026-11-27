@@ -710,6 +710,22 @@ test('app: past streams, profiles and the suggestion', async () => {
   } finally { p.kill(); }
 });
 
+test('ffargs: platform-aware auto bitrates and Facebook limits', () => {
+  const F = R('lib/ffargs.js');
+  const info = { width: 1920, height: 1080, fps: 30, videoCodec: 'H264', audioCodec: 'AAC', audioKbps: 320 };
+  const yt = F.plan({ mode: 'encode', height: 1080 }, { mode: 'copy' }, info, { type: 'youtube' });
+  const fb = F.plan({ mode: 'encode', height: 1080 }, { mode: 'copy' }, info, { type: 'facebook' });
+  const rt = F.plan({ mode: 'encode', height: 1080 }, { mode: 'copy' }, info, { type: 'rtmp' });
+  assert.deepStrictEqual([yt.bitrate, fb.bitrate, rt.bitrate], [10000, 5500, 6000]);
+  assert.ok(yt.copyAudio && !fb.copyAudio && fb.audioBitrate === 128, '320 kb/s audio is too much for Facebook');
+  assert.ok(fb.reasons.some((r) => /256/.test(r)));
+  assert.strictEqual(F.plan({ mode: 'encode', height: 1080, bitrate: 12000 }, {}, info, { type: 'facebook' }).bitrate, 6000, 'capped at Facebook\'s maximum');
+  assert.strictEqual(F.plan({ mode: 'encode', height: 1080, bitrate: 12000 }, {}, Object.assign({}, info, { fps: 60 }), { type: 'facebook' }).bitrate, 9000);
+  assert.ok(F.plan({ mode: 'encode' }, { mode: 'copy' }, Object.assign({}, info, { audioKbps: 192 }), { type: 'facebook' }).copyAudio, 'small enough: kept');
+  const args = F.destination({ type: 'youtube', video: { mode: 'encode', height: 1080 }, audio: { mode: 'copy' } }, 'rtmp://x/y', info, 'rtsp://a/b').args.join(' ');
+  assert.ok(/-b:v 10000k/.test(args) && /-g 60/.test(args) && /-bf 2/.test(args) && /nal-hrd=cbr/.test(args), args);
+});
+
 // ---------- run ----------
 (async () => {
   let failed = 0;

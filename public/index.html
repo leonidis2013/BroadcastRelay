@@ -69,6 +69,10 @@
   #alerts { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
   #alerts:empty { display:none; }
   .devs { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; align-items:stretch; }
+  .devbar { grid-column:1/-1; display:flex; align-items:center; gap:10px; margin:6px 0 -4px; }
+  .devbar .dbl { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); font-weight:700; }
+  .devbar .addbtn { padding:5px 12px; font-size:13px; min-height:0; border:1px dashed var(--line); background:transparent; color:var(--acc); font-weight:700; }
+  .devbar .addbtn:hover { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 10%, transparent); }
   .devs > .dev > .df { margin-top:auto; } /* buttons line up at the bottom of same-height cards */
   .dev { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--ok); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:9px; min-width:0; }
   .dev.upd { border-left-color:var(--warn); }
@@ -664,8 +668,9 @@
     var key = S.settings.destinations.map(function (d) { return d.id; }).join(',');
     if (key !== cardsKey) {
       $$('.dyn', g).forEach(function (x) { x.remove(); });
+      g.insertAdjacentHTML('beforeend', '<div class="devbar dyn"><span class="dbl">Destinations</span><button class="addbtn" id="addDest">+ Add destination</button>' +
+        (S.settings.destinations.length ? '' : '<span class="note">YouTube, Facebook, RTMP, SRT or NDI</span>') + '</div>');
       S.settings.destinations.forEach(function (d) { g.insertAdjacentHTML('beforeend', '<article class="dev dyn" data-dest="' + d.id + '"></article>'); });
-      g.insertAdjacentHTML('beforeend', '<article class="dev dyn add" id="addDest"><b>+ Add destination</b><span class="note">YouTube, Facebook, RTMP, SRT or NDI</span></article>');
       g.insertAdjacentHTML('beforeend', '<article class="dev dyn" id="webCard"></article><article class="dev dyn" id="recCard"></article><article class="dev dyn wide" id="netCard"></article>');
       cardsKey = key;
     }
@@ -1395,7 +1400,7 @@
       '<label class="fld wide" id="fKey"><span>Stream key</span><input data-f="key" type="password" autocomplete="new-password" spellcheck="false" placeholder="' + (d.hasKey ? 'Saved. Type to replace it' : 'Paste the stream key') + '"></label>' +
       '<div class="fld wide note" id="fApiNote"></div>' +
       '<label class="fld wide" id="fShared"><span>Title and description</span>' + segH('shared', [['1', 'Use Stream info'], ['0', 'Its own']], d.useShared === false ? '0' : '1') + '</label>' +
-      '<div class="fld wide note" id="fSharedNote"></div>' +
+      '<div class="note" id="fSharedNote" style="grid-column:1/-1"></div>' +
       '<label class="fld wide" id="fTitle"><span>Title</span><input data-f="title" value="' + esc(d.useShared === false ? d.title : S.settings.stream.title) + '" maxlength="100"></label>' +
       '<label class="fld wide" id="fDesc"><span>Description</span><textarea data-f="description" rows="3">' + esc(d.useShared === false ? d.description : S.settings.stream.description) + '</textarea></label>' +
       '<label class="fld" id="fPriv"><span>Privacy</span><select data-f="privacy">' + opts([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], d.privacy) + '</select></label>' +
@@ -1428,7 +1433,8 @@
       var own = segVal(root, 'shared') === '0';
       $('#fShared').classList.toggle('hide', !api);
       $('#fSharedNote').classList.toggle('hide', !api || own);
-      $('#fSharedNote').innerHTML = 'Goes live as <b>' + esc(ST.stream.title) + '</b>. Change it with Stream info on the main page.';
+      var sf = S.settings.stream.presets.find(function (x) { return x.id === S.settings.stream.presetId; });
+      $('#fSharedNote').innerHTML = 'Goes live as <b>' + esc(ST.stream.title || (sf ? fillTitle(sf.title, S.settings.stream) : '')) + '</b>. Change it with Stream info on the main page.';
       ['#fTitle', '#fDesc'].forEach(function (s) { $(s).classList.toggle('hide', !api || !own); });
       $('#fPriv').classList.toggle('hide', !(api && own && type === 'youtube'));
       $('#fUrlL').textContent = type === 'srt' ? 'SRT address (srt://host:port?streamid=…)' : plat ? 'Server (leave empty for ' + TYPE_NAME[type] + '\'s RTMPS server)' : 'Server (rtmp:// or rtmps://)';
@@ -1448,7 +1454,7 @@
       var nm = ($('[data-f=name]', root).value || 'Program').replace(/[()]/g, '');
       $('#fNdiNote').innerHTML = !S.ndi.available ? '<span class="bad">NDI is not available in this container: ' + esc(S.ndi.why) + '</span>' :
         '<span>Shows up on the network as <b>' + esc(S.hostname.toUpperCase() + ' (' + nm + ')') + '</b> for BroadcastDecode, vMix, OBS and other NDI receivers. Decoding the feed for NDI uses some CPU; full resolution NDI uses about 100–150 Mb/s of network per receiver.</span>';
-      $('#fANote').innerHTML = type === 'facebook' ? 'Facebook recommends 128 kb/s AAC and may reject more than 256 kb/s.' : type === 'youtube' ? 'YouTube re-encodes audio to AAC 128 kb/s or Opus for viewers; a higher upload bitrate still gives it a cleaner source.' : '';
+      $('#fANote').innerHTML = type === 'facebook' ? 'Facebook prefers 128 kb/s AAC and takes at most 256 kb/s: audio above that from OBS is re-encoded.' : type === 'youtube' ? 'YouTube re-encodes audio to AAC 128 kb/s or Opus for viewers; a higher upload bitrate still gives it a cleaner source.' : '';
     }
     $('[data-f=name]', root).addEventListener('input', function () { if (segVal(root, 'type') === 'ndi') refresh(); });
     // the estimate follows every change of type, resolution, frame rate, bitrate, quality or audio
@@ -1467,7 +1473,8 @@
           var p1 = capPct(e.cpu), pt = capPct(cpu), pm = Math.round(100 * mem / L.memMB), upMax = R.uploadMbps * 1000, pu = upMax ? Math.round(100 * up / upMax) : 0;
           var tip = pt > 100 ? '<div class="b" style="margin-top:4px">That is more CPU than this app may use, so streams would stutter. Use <b>Send the original</b> where the destination accepts it, a lower resolution, or a lighter Quality / CPU setting.</div>'
             : pt > 85 ? '<div class="w" style="margin-top:4px">Close to the limit: keep some room for the input, the web player and spikes.</div>' : '';
-          $('#dEst').innerHTML = '<div><b>Estimate for this destination:</b> <span class="big ' + lvl(p1) + '">' + coresTxt(e.cpu) + '</span> (' + p1 + '% of this app\'s ' + L.cores + ' cores) · ' + memTxt(e.memMB) + ' memory' +
+          var vb = e.bitrate ? 'Video ' + rate(e.bitrate) + (Number(f('bitrate')) ? '' : ' (auto for ' + TYPE_NAME[type] + ' ' + e.height + 'p)') + (e.audioBitrate ? ' · audio AAC ' + e.audioBitrate + ' kb/s' : ' · original audio') : '';
+          $('#dEst').innerHTML = (vb ? '<div>' + vb + '</div>' : '') + (e.reasons && e.reasons.length ? '<div class="w">' + esc(e.reasons.join('; ')) + '</div>' : '') + '<div><b>Estimate for this destination:</b> <span class="big ' + lvl(p1) + '">' + coresTxt(e.cpu) + '</span> (' + p1 + '% of this app\'s ' + L.cores + ' cores) · ' + memTxt(e.memMB) + ' memory' +
             (e.upKbps ? ' · ' + rate(e.upKbps) + ' upload' : '') + (e.lanKbps ? ' · ' + rate(e.lanKbps) + ' per NDI receiver' : '') + '</div>' +
             '<div class="tot">Go live with ' + (armed ? 'this' : 'the others (this one starts by hand)') + ': <b class="' + lvl(pt) + '">' + coresTxt(cpu) + ' of ' + L.cores + ' (' + pt + '%)</b> · <b class="' + lvl(pm) + '">' + memTxt(mem) + ' of ' + memTxt(L.memMB) + '</b> · ' +
             (upMax ? '<b class="' + lvl(pu) + '">' + rate(up) + ' of ' + rate(upMax) + ' upload (' + pu + '%)</b>' : rate(up) + ' upload') + '</div>' + tip +
@@ -1479,6 +1486,7 @@
     root.addEventListener('input', function (ev) { if (ev.target.dataset.f === 'bitrate') updEst(); });
     wireSegs(root, function (name, v) {
       updEst();
+      if (name === 'type' && !id) $('[data-f=abitrate]', root).value = segVal(root, 'type') === 'facebook' ? '128' : '256';
       if (name === 'type') { var nm = $('[data-f=name]', root); nm.placeholder = TYPE_NAME[v]; if (v === 'youtube' || v === 'facebook') { var cn = ST.platforms[v].connected ? 'api' : 'key'; $$('[data-seg=connect] button', root).forEach(function (b) { b.classList.toggle('on', b.dataset.v === cn); }); } }
       refresh();
     });
@@ -1671,7 +1679,7 @@
       '<div class="card" data-live="yt"></div>' +
       card('OAuth client', '<ol class="steps" style="margin:0 0 6px;padding-left:20px;color:var(--dim);font-size:13px">' +
         '<li>In <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>, create a project and enable the <b>YouTube Data API v3</b>.</li>' +
-        '<li>OAuth consent screen: External, add your Google account as a test user (or publish the app).</li>' +
+        '<li>OAuth consent screen (Google Auth Platform): Audience <b>External</b>, then <b>Publish app</b> so it is <b>In production</b>. Left in Testing, Google signs BroadcastRelay out every 7 days. You can skip Google\'s verification: when you connect, choose <i>Advanced › Go to … (unsafe)</i> once; it is your own app.</li>' +
         '<li>Credentials › Create OAuth client ID › type <b>TVs and Limited Input devices</b>.</li>' +
         '<li>Paste the client ID and secret here, save, then Connect.</li></ol>' +
         set('Client ID', '', inp('clientId', y.clientId, 'wide')) +
